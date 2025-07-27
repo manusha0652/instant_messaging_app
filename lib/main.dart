@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:instant_messaging_app/screens/chat_detail_screen.dart';
+
 
 void main() {
   runApp(const MyApp());
@@ -11,12 +13,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Hello World',
-      home: Scaffold(
-        appBar: AppBar(title: const Text('Hello World App')),
-        body: const Center(
-          child: Text('Hello World!', style: TextStyle(fontSize: 24)),
-        ),
-      ),
+      home: const ChatDetailScreen(),
     );
   }
 }
