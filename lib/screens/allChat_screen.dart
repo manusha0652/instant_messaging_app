@@ -1,7 +1,29 @@
 import 'package:flutter/material.dart';
+import 'profile_QR_screen.dart';
+import 'profile_screen.dart';
 
-class ChatHomePage extends StatelessWidget {
+class ChatHomePage extends StatefulWidget {
   const ChatHomePage({super.key});
+
+  @override
+  State<ChatHomePage> createState() => _ChatHomePageState();
+}
+
+class _ChatHomePageState extends State<ChatHomePage> {
+  int _selectedIndex = 0;
+
+  static final List<Widget> _pages = <Widget>[
+    // The chat list (original body)
+    _ChatListBody(),
+    ProfileQRScreen(),
+    ProfilePage(),
+  ];
+
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -12,7 +34,7 @@ class ChatHomePage extends StatelessWidget {
         elevation: 0,
         title: Row(
           children: [
-            Image.asset('assets/logo.png', height: 32), // Replace with your logo
+            Image.asset('assets/logo.png', height: 32),
             const SizedBox(width: 8),
             const Text('ChatLink', style: TextStyle(color: Colors.white)),
           ],
@@ -24,70 +46,13 @@ class ChatHomePage extends StatelessWidget {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: 'Search chat or contact',
-                filled: true,
-                fillColor: const Color(0xFF233A4D),
-                prefixIcon: const Icon(Icons.search, color: Colors.white54),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide.none,
-                ),
-                hintStyle: const TextStyle(color: Colors.white54),
-              ),
-              style: const TextStyle(color: Colors.white),
-            ),
-          ),
-          Expanded(
-            child: ListView(
-              children: [
-                ChatItem(
-                  avatar: 'assets/user1.png',
-                  name: 'Jerome Bell',
-                  message: 'Thanks sir!',
-                  time: '16:52',
-                  isOnline: true,
-                ),
-                ChatItem(
-                  avatar: 'assets/user2.png',
-                  name: 'Floyd Miles',
-                  message: 'Hello, bro! Can you help me?',
-                  time: '13:06',
-                  unreadCount: 1,
-                ),
-                ChatItem(
-                  avatar: 'assets/user3.png',
-                  name: 'Devon Lane',
-                  message: '00:34',
-                  time: '11:20',
-                  isVoice: true,
-                ),
-                ChatItem(
-                  avatar: 'assets/user4.png',
-                  name: 'Annette Black',
-                  message: 'Well, good job! 👍',
-                  time: 'Yesterday',
-                ),
-                ChatItem(
-                  avatar: 'assets/user5.png',
-                  name: 'Darlene Robertson',
-                  message: 'Whoaah!! 🤔',
-                  time: '4 Feb 2025',
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+      body: _pages[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
         backgroundColor: const Color(0xFF233A4D),
         selectedItemColor: Colors.tealAccent,
         unselectedItemColor: Colors.white,
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped,
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.chat_bubble),
@@ -103,6 +68,73 @@ class ChatHomePage extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// Extracted chat list body for use in navigation
+class _ChatListBody extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: TextField(
+            decoration: InputDecoration(
+              hintText: 'Search chat or contact',
+              filled: true,
+              fillColor: const Color(0xFF233A4D),
+              prefixIcon: const Icon(Icons.search, color: Colors.white54),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(24),
+                borderSide: BorderSide.none,
+              ),
+              hintStyle: const TextStyle(color: Colors.white54),
+            ),
+            style: const TextStyle(color: Colors.white),
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            children: [
+              ChatItem(
+                avatar: 'assets/user1.png',
+                name: 'Jerome Bell',
+                message: 'Thanks sir!',
+                time: '16:52',
+                isOnline: true,
+              ),
+              ChatItem(
+                avatar: 'assets/user2.png',
+                name: 'Floyd Miles',
+                message: 'Hello, bro! Can you help me?',
+                time: '13:06',
+                unreadCount: 1,
+              ),
+              ChatItem(
+                avatar: 'assets/user3.png',
+                name: 'Devon Lane',
+                message: '00:34',
+                time: '11:20',
+                isVoice: true,
+              ),
+              ChatItem(
+                avatar: 'assets/user4.png',
+                name: 'Annette Black',
+                message: 'Well, good job! 👍',
+                time: 'Yesterday',
+              ),
+              ChatItem(
+                avatar: 'assets/user5.png',
+                name: 'Darlene Robertson',
+                message: 'Whoaah!! 🤔',
+                time: '4 Feb 2025',
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

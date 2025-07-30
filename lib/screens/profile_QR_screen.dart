@@ -94,9 +94,11 @@ class ProfileQRScreen extends StatelessWidget {
                   const SizedBox(width: 16),
                   TextButton(
                     onPressed: () {
+
                       // Navigate to scan QR page
                     },
                     child: const Text('Scan QR', style: TextStyle(color: Colors.white70)),
+
                   ),
                 ],
               ),

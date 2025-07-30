@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:instant_messaging_app/screens/chat_detail_screen.dart';
+import 'package:instant_messaging_app/screens/main_screen.dart';
 
 
 void main() {
@@ -12,8 +12,8 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Hello World',
-      home: const ChatDetailScreen(),
+      title: 'Instant Messaging App',
+      home: const MainScreen(),
     );
   }
 }

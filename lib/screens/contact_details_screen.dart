@@ -8,6 +8,7 @@ class ContactDetailsScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFF232A32),
       body: SafeArea(
+        // padding: const EdgeInsets.only(top: 16, left: 8, right: 8),
         child: Center(
           child: SingleChildScrollView(
             child: Container(
@@ -49,7 +50,10 @@ class ContactDetailsScreen extends StatelessWidget {
                           backgroundColor: Colors.black26,
                           child: IconButton(
                             icon: const Icon(Icons.edit, color: Colors.white),
-                            onPressed: () {},
+                            onPressed: () {
+                              // Edit action
+
+                            },
                           ),
                         ),
                       ),
