@@ -119,6 +119,104 @@ class DatabaseService {
     return count > 0;
   }
 
+  // Chat session operations
+  Future<int> createChatSession({
+    required String contactName,
+    required String contactPhone,
+    String? contactAvatar,
+  }) async {
+    final db = await database;
+    return await db.insert('chat_sessions', {
+      'contactName': contactName,
+      'contactPhone': contactPhone,
+      'contactAvatar': contactAvatar,
+      'lastMessage': 'Tap to start chatting',
+      'lastMessageTime': DateTime.now().millisecondsSinceEpoch,
+      'unreadCount': 0,
+      'isActive': 1,
+    });
+  }
+
+  Future<Map<String, dynamic>?> getChatSessionByPhone(String phone) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'chat_sessions',
+      where: 'contactPhone = ?',
+      whereArgs: [phone],
+    );
+
+    if (maps.isNotEmpty) {
+      return maps.first;
+    }
+    return null;
+  }
+
+  Future<List<Map<String, dynamic>>> getAllChatSessions() async {
+    final db = await database;
+    return await db.query(
+      'chat_sessions',
+      where: 'isActive = ?',
+      whereArgs: [1],
+      orderBy: 'lastMessageTime DESC',
+    );
+  }
+
+  Future<int> updateChatSession(int sessionId, Map<String, dynamic> updates) async {
+    final db = await database;
+    return await db.update(
+      'chat_sessions',
+      updates,
+      where: 'id = ?',
+      whereArgs: [sessionId],
+    );
+  }
+
+  Future<int> deleteChatSession(int sessionId) async {
+    final db = await database;
+    return await db.update(
+      'chat_sessions',
+      {'isActive': 0},
+      where: 'id = ?',
+      whereArgs: [sessionId],
+    );
+  }
+
+  // Message operations
+  Future<int> insertMessage({
+    required int sessionId,
+    required String content,
+    required bool isFromMe,
+    String messageType = 'text',
+  }) async {
+    final db = await database;
+    final messageId = await db.insert('messages', {
+      'sessionId': sessionId,
+      'content': content,
+      'isFromMe': isFromMe ? 1 : 0,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      'messageType': messageType,
+      'isRead': isFromMe ? 1 : 0,
+    });
+
+    // Update chat session with last message
+    await updateChatSession(sessionId, {
+      'lastMessage': content,
+      'lastMessageTime': DateTime.now().millisecondsSinceEpoch,
+    });
+
+    return messageId;
+  }
+
+  Future<List<Map<String, dynamic>>> getMessagesForSession(int sessionId) async {
+    final db = await database;
+    return await db.query(
+      'messages',
+      where: 'sessionId = ?',
+      whereArgs: [sessionId],
+      orderBy: 'timestamp ASC',
+    );
+  }
+
   // Settings operations
   Future<Map<String, dynamic>> getSettings() async {
     final db = await database;

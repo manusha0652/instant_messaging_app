@@ -3,6 +3,7 @@ import '../../services/database_service.dart';
 import '../../services/user_session_service.dart';
 import '../../models/user.dart';
 import '../fingerprint_authentication.dart';
+import '../qr_profile_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -141,6 +142,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  void _openQRProfile() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const QRProfileScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -180,7 +188,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 child: Column(
                   children: [
-                    // Top row with back button and edit button
+                    // Top row with back button and QR button
                     Row(
                       children: [
                         // Back button
@@ -188,7 +196,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           width: 40,
                           height: 40,
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.1),
+                            color: Colors.white.withOpacity(0.1),
                             shape: BoxShape.circle,
                           ),
                           child: IconButton(
@@ -206,12 +214,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                         const Spacer(),
 
+                        // QR Code button
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF00A8FF).withOpacity(0.2),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: const Color(0xFF00A8FF),
+                              width: 1,
+                            ),
+                          ),
+                          child: IconButton(
+                            onPressed: _openQRProfile,
+                            icon: const Icon(
+                              Icons.qr_code,
+                              color: Color(0xFF00A8FF),
+                              size: 20,
+                            ),
+                            padding: EdgeInsets.zero,
+                            tooltip: 'My QR Code',
+                          ),
+                        ),
+
+                        const SizedBox(width: 12),
+
                         // Edit button
                         Container(
                           width: 40,
                           height: 40,
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.1),
+                            color: Colors.white.withOpacity(0.1),
                             shape: BoxShape.circle,
                           ),
                           child: IconButton(
@@ -267,218 +301,286 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                     const SizedBox(height: 20),
 
-                    // Call button
-                    Container(
-                      width: 60,
-                      height: 60,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF1E3A5F),
-                        shape: BoxShape.circle,
-                      ),
-                      child: IconButton(
-                        onPressed: () {
-                          // Handle call
-                        },
-                        icon: const Icon(
-                          Icons.call,
-                          color: Colors.white,
-                          size: 24,
+                    // Action buttons row
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // Call button
+                        Container(
+                          width: 60,
+                          height: 60,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF1E3A5F),
+                            shape: BoxShape.circle,
+                          ),
+                          child: IconButton(
+                            onPressed: () {
+                              // Handle call
+                            },
+                            icon: const Icon(
+                              Icons.call,
+                              color: Colors.white,
+                              size: 24,
+                            ),
+                          ),
                         ),
-                      ),
+
+                        const SizedBox(width: 20),
+
+                        // QR Share button
+                        Container(
+                          width: 60,
+                          height: 60,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF00A8FF),
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF00A8FF).withOpacity(0.3),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: IconButton(
+                            onPressed: _openQRProfile,
+                            icon: const Icon(
+                              Icons.qr_code_2,
+                              color: Colors.white,
+                              size: 24,
+                            ),
+                            tooltip: 'Share QR Code',
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
 
               // Bio section - from database
+              if (_currentUser!.bio != null && _currentUser!.bio!.isNotEmpty)
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2A4A6B),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.info_outline,
+                        color: Color(0xFF00A8FF),
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _currentUser!.bio!,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+              const SizedBox(height: 20),
+
+              // Quick Actions Section
               Container(
                 margin: const EdgeInsets.symmetric(horizontal: 20),
-                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: const Color(0xFF2A4A6B),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Bio',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            _currentUser!.bio ?? 'No bio added yet',
-                            style: TextStyle(
-                              color: _currentUser!.bio != null
-                                  ? Colors.white70
-                                  : Colors.white54,
-                              fontSize: 14,
-                              fontStyle: _currentUser!.bio != null
-                                  ? FontStyle.normal
-                                  : FontStyle.italic,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // Settings section
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Setting',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
+                    // QR Code option
+                    ListTile(
+                      leading: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF00A8FF).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.qr_code,
+                          color: Color(0xFF00A8FF),
+                          size: 20,
+                        ),
+                      ),
+                      title: const Text(
+                        'My QR Code',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      subtitle: const Text(
+                        'Share your contact details',
+                        style: TextStyle(
+                          color: Colors.white60,
+                          fontSize: 14,
+                        ),
+                      ),
+                      trailing: const Icon(
+                        Icons.arrow_forward_ios,
+                        color: Colors.white38,
+                        size: 16,
+                      ),
+                      onTap: _openQRProfile,
+                    ),
+
+                    Divider(
+                      color: Colors.white.withValues(alpha: 0.1),
+                      thickness: 1,
+                      indent: 68,
+                      endIndent: 16,
+                    ),
+
+                    // Settings option
+                    ListTile(
+                      leading: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.settings,
+                          color: Colors.white70,
+                          size: 20,
+                        ),
+                      ),
+                      title: const Text(
+                        'Settings',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      subtitle: const Text(
+                        'App preferences',
+                        style: TextStyle(
+                          color: Colors.white60,
+                          fontSize: 14,
+                        ),
+                      ),
+                      trailing: const Icon(
+                        Icons.arrow_forward_ios,
+                        color: Colors.white38,
+                        size: 16,
+                      ),
+                      onTap: () {
+                        // Handle settings
+                      },
+                    ),
+
+                    Divider(
+                      color: Colors.white.withValues(alpha: 0.1),
+                      thickness: 1,
+                      indent: 68,
+                      endIndent: 16,
+                    ),
+
+                    // Dark mode toggle
+                    ListTile(
+                      leading: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.amber.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          _isDarkMode ? Icons.dark_mode : Icons.light_mode,
+                          color: Colors.amber,
+                          size: 20,
+                        ),
+                      ),
+                      title: const Text(
+                        'Dark Mode',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      subtitle: Text(
+                        _isDarkMode ? 'Enabled' : 'Disabled',
+                        style: const TextStyle(
+                          color: Colors.white60,
+                          fontSize: 14,
+                        ),
+                      ),
+                      trailing: Switch(
+                        value: _isDarkMode,
+                        onChanged: _toggleDarkMode,
+                        activeColor: const Color(0xFF00A8FF),
                       ),
                     ),
 
-                    const SizedBox(height: 12),
+                    Divider(
+                      color: Colors.white.withValues(alpha: 0.1),
+                      thickness: 1,
+                      indent: 68,
+                      endIndent: 16,
+                    ),
 
-                    // Settings options
-                    Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF2A4A6B),
-                        borderRadius: BorderRadius.circular(16),
+                    // Logout option
+                    ListTile(
+                      leading: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.red.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.logout,
+                          color: Colors.red,
+                          size: 20,
+                        ),
                       ),
-                      child: Column(
-                        children: [
-                          _buildSettingItem(
-                            icon: Icons.notifications_outlined,
-                            title: 'Notification',
-                            subtitle: 'Default',
-                            onTap: () {},
-                          ),
-                          _buildDivider(),
-                          _buildSettingItem(
-                            icon: Icons.dark_mode_outlined,
-                            title: 'Dark Mode',
-                            subtitle: 'Switch to a dark color scheme',
-                            hasSwitch: true,
-                            switchValue: _isDarkMode,
-                            onTap: () {},
-                            onSwitchChanged: _toggleDarkMode,
-                          ),
-                          _buildDivider(),
-                          _buildSettingItem(
-                            icon: Icons.qr_code_outlined,
-                            title: 'My QR',
-                            subtitle: 'Connect to Chat',
-                            onTap: () {},
-                          ),
-                          _buildDivider(),
-                          _buildSettingItem(
-                            icon: Icons.logout,
-                            title: 'Log Out',
-                            subtitle: 'Sign out of your account',
-                            onTap: _handleLogout,
-                          ),
-                        ],
+                      title: const Text(
+                        'Logout',
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
+                      subtitle: const Text(
+                        'Sign out of account',
+                        style: TextStyle(
+                          color: Colors.white60,
+                          fontSize: 14,
+                        ),
+                      ),
+                      trailing: const Icon(
+                        Icons.arrow_forward_ios,
+                        color: Colors.red,
+                        size: 16,
+                      ),
+                      onTap: _handleLogout,
                     ),
                   ],
                 ),
               ),
 
-              const SizedBox(height: 20),
+              const SizedBox(height: 40),
             ],
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildSettingItem({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    bool hasSwitch = false,
-    bool switchValue = false,
-    required VoidCallback onTap,
-    Function(bool)? onSwitchChanged,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: hasSwitch ? null : onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(icon, color: Colors.white, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (hasSwitch)
-                Switch(
-                  value: switchValue,
-                  onChanged: onSwitchChanged,
-                  activeColor: const Color(0xFF00A8FF),
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                )
-              else
-                const Icon(
-                  Icons.chevron_right,
-                  color: Colors.white70,
-                  size: 20,
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDivider() {
-    return Container(
-      height: 1,
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      color: Colors.white.withValues(alpha: 0.1),
     );
   }
 }
