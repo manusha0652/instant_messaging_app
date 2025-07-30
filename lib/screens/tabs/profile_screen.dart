@@ -438,7 +438,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
 
                     Divider(
-                      color: Colors.white.withOpacity(0.1),
+                      color: Colors.white.withValues(alpha: 0.1),
                       thickness: 1,
                       indent: 68,
                       endIndent: 16,
@@ -485,7 +485,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
 
                     Divider(
-                      color: Colors.white.withOpacity(0.1),
+                      color: Colors.white.withValues(alpha: 0.1),
                       thickness: 1,
                       indent: 68,
                       endIndent: 16,
@@ -529,7 +529,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
 
                     Divider(
-                      color: Colors.white.withOpacity(0.1),
+                      color: Colors.white.withValues(alpha: 0.1),
                       thickness: 1,
                       indent: 68,
                       endIndent: 16,
@@ -541,7 +541,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         width: 40,
                         height: 40,
                         decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.1),
+                          color: Colors.red.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: const Icon(
