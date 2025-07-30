@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../services/database_service.dart';
 import '../../services/user_session_service.dart';
 import '../../models/user.dart';
+import '../fingerprint_authentication.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -69,11 +70,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _handleLogout() async {
     try {
-      await _sessionService.clearSession();
+      // Show confirmation dialog
+      bool? confirmLogout = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text('Logout'),
+            content: const Text(
+              'Are you sure you want to logout?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Logout'),
+              ),
+            ],
+          );
+        },
+      );
 
-      // Navigate back to login screen
-      if (mounted) {
-        Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
+      if (confirmLogout == true) {
+        // Get current user phone before clearing session
+        final String? currentUserPhone = await _sessionService.getCurrentUser();
+        
+        // Clear current session but keep last authenticated user
+        await _sessionService.clearSession();
+
+        // Navigate to fingerprint authentication screen for re-authentication
+        if (mounted && currentUserPhone != null) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (context) => FingerprintAuthScreen(
+                phoneNumber: currentUserPhone,
+                isSetup: false, // Authentication mode, not setup
+              ),
+            ),
+            (route) => false,
+          );
+        } else {
+          // Fallback to login if no current user found
+          Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+        }
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(

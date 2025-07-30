@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'screens/splash_screen.dart';
 import 'screens/login_screen.dart';
+import 'screens/first_time_setup_screen.dart';
 import 'screens/fingerprint_authentication.dart';
 import 'screens/home_screen.dart' as home;
 import 'services/database_service.dart';
@@ -33,6 +34,10 @@ class MyApp extends StatelessWidget {
       ),
       home:
           const AppInitializer(), // Use initializer instead of direct SplashScreen
+      routes: {
+        '/login': (context) => const LoginScreen(),
+        '/home': (context) => const home.HomeScreen(),
+      },
     );
   }
 }
@@ -46,6 +51,7 @@ class AppInitializer extends StatefulWidget {
 
 class _AppInitializerState extends State<AppInitializer> {
   final UserSessionService _sessionService = UserSessionService();
+  final DatabaseService _databaseService = DatabaseService();
 
   @override
   void initState() {
@@ -58,7 +64,17 @@ class _AppInitializerState extends State<AppInitializer> {
     await Future.delayed(const Duration(seconds: 2));
 
     try {
-      // Check if user has logged in before
+      // First check if there are any users in the database
+      final bool hasAnyUsers = await _databaseService.hasAnyUsers();
+
+      if (!hasAnyUsers) {
+        // No users in database - this is a brand new installation
+        // Go directly to profile setup for first user
+        _navigateToProfileSetup();
+        return;
+      }
+
+      // There are users in database - check session state
       final bool hasLoggedInBefore = await _sessionService.hasLoggedInBefore();
 
       if (hasLoggedInBefore) {
@@ -83,7 +99,7 @@ class _AppInitializerState extends State<AppInitializer> {
           }
         }
       } else {
-        // First time user - go to login screen
+        // Has users but no previous login - go to login screen
         _navigateToLogin();
       }
     } catch (e) {
@@ -111,9 +127,17 @@ class _AppInitializerState extends State<AppInitializer> {
   }
 
   void _navigateToLogin() {
+    Navigator.pushReplacementNamed(context, '/login');
+  }
+
+  void _navigateToProfileSetup() {
+    // For first-time users, we'll navigate to a special setup flow
+    // that includes phone number collection as well
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (context) => const LoginScreen()),
+      MaterialPageRoute(
+        builder: (context) => const FirstTimeSetupScreen(),
+      ),
     );
   }
 
