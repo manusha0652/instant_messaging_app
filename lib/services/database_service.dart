@@ -105,6 +105,20 @@ class DatabaseService {
     );
   }
 
+  Future<int> deleteAllUsers() async {
+    final db = await database;
+    return await db.delete('users');
+  }
+
+  Future<bool> hasAnyUsers() async {
+    final db = await database;
+    final List<Map<String, dynamic>> result = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM users',
+    );
+    final count = result.first['count'] as int;
+    return count > 0;
+  }
+
   // Settings operations
   Future<Map<String, dynamic>> getSettings() async {
     final db = await database;
