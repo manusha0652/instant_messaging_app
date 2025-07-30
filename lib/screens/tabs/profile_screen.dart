@@ -1,10 +1,125 @@
 import 'package:flutter/material.dart';
+import '../../services/database_service.dart';
+import '../../services/user_session_service.dart';
+import '../../models/user.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
   @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  final DatabaseService _databaseService = DatabaseService();
+  final UserSessionService _sessionService = UserSessionService();
+  User? _currentUser;
+  bool _isLoading = true;
+  bool _isDarkMode = false;
+  Map<String, dynamic> _settings = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+    _loadDarkModeSetting();
+  }
+
+  Future<void> _loadUserData() async {
+    try {
+      // Get current user's phone number
+      final String? currentUserPhone = await _sessionService.getCurrentUser();
+
+      if (currentUserPhone != null) {
+        // Load user data from database
+        final User? user = await _databaseService.getUserByPhone(
+          currentUserPhone,
+        );
+        final Map<String, dynamic> settings = await _databaseService
+            .getSettings();
+
+        setState(() {
+          _currentUser = user;
+          _settings = settings;
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading user data: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadDarkModeSetting() async {
+    try {
+      final settings = await _databaseService.getSettings();
+      setState(() {
+        _isDarkMode = settings['darkModeEnabled'] == 1;
+      });
+    } catch (e) {
+      print('Error loading dark mode setting: $e');
+    }
+  }
+
+  Future<void> _handleLogout() async {
+    try {
+      await _sessionService.clearSession();
+
+      // Navigate back to login screen
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error logging out: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _toggleDarkMode(bool value) async {
+    try {
+      await _databaseService.updateSettings({'darkModeEnabled': value ? 1 : 0});
+      setState(() {
+        _isDarkMode = value;
+        _settings['darkModeEnabled'] = value ? 1 : 0;
+      });
+    } catch (e) {
+      print('Error updating dark mode: $e');
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF1E3A5F),
+        body: const Center(
+          child: CircularProgressIndicator(color: Color(0xFF00A8FF)),
+        ),
+      );
+    }
+
+    if (_currentUser == null) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF1E3A5F),
+        body: const Center(
+          child: Text(
+            'User not found',
+            style: TextStyle(color: Colors.white, fontSize: 18),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFF1E3A5F),
       body: SafeArea(
@@ -76,17 +191,19 @@ class ProfileScreen extends StatelessWidget {
                     CircleAvatar(
                       radius: 60,
                       backgroundColor: const Color(0xFF00A8FF),
-                      backgroundImage: const NetworkImage(
-                        'https://api.dicebear.com/7.x/avataaars/png?seed=AriaDwitollo&backgroundColor=1e3a5f',
-                      ),
+                      backgroundImage: _currentUser!.profilePicture != null
+                          ? NetworkImage(_currentUser!.profilePicture!)
+                          : NetworkImage(
+                              'https://api.dicebear.com/7.x/avataaars/png?seed=${_currentUser!.name}&backgroundColor=1e3a5f',
+                            ),
                     ),
 
                     const SizedBox(height: 16),
 
-                    // Name
-                    const Text(
-                      'Aria Dwitollo',
-                      style: TextStyle(
+                    // Name - from database
+                    Text(
+                      _currentUser!.name,
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
@@ -95,10 +212,13 @@ class ProfileScreen extends StatelessWidget {
 
                     const SizedBox(height: 8),
 
-                    // Phone number
-                    const Text(
-                      '+62 812 3456 7890',
-                      style: TextStyle(color: Colors.white70, fontSize: 16),
+                    // Phone number - from database
+                    Text(
+                      _currentUser!.phone,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 16,
+                      ),
                     ),
 
                     const SizedBox(height: 20),
@@ -107,8 +227,8 @@ class ProfileScreen extends StatelessWidget {
                     Container(
                       width: 60,
                       height: 60,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1E3A5F),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF1E3A5F),
                         shape: BoxShape.circle,
                       ),
                       child: IconButton(
@@ -126,7 +246,7 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ),
 
-              // Bio section
+              // Bio section - from database
               Container(
                 margin: const EdgeInsets.symmetric(horizontal: 20),
                 padding: const EdgeInsets.all(16),
@@ -134,14 +254,34 @@ class ProfileScreen extends StatelessWidget {
                   color: const Color(0xFF2A4A6B),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Text(
-                      'Bio',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Bio',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _currentUser!.bio ?? 'No bio added yet',
+                            style: TextStyle(
+                              color: _currentUser!.bio != null
+                                  ? Colors.white70
+                                  : Colors.white54,
+                              fontSize: 14,
+                              fontStyle: _currentUser!.bio != null
+                                  ? FontStyle.normal
+                                  : FontStyle.italic,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -187,8 +327,9 @@ class ProfileScreen extends StatelessWidget {
                             title: 'Dark Mode',
                             subtitle: 'Switch to a dark color scheme',
                             hasSwitch: true,
-                            switchValue: true,
+                            switchValue: _isDarkMode,
                             onTap: () {},
+                            onSwitchChanged: _toggleDarkMode,
                           ),
                           _buildDivider(),
                           _buildSettingItem(
@@ -201,15 +342,8 @@ class ProfileScreen extends StatelessWidget {
                           _buildSettingItem(
                             icon: Icons.logout,
                             title: 'Log Out',
-                            subtitle: 'Archive chat',
-                            onTap: () {
-                              // Handle logout
-                              Navigator.pushNamedAndRemoveUntil(
-                                context,
-                                '/splash',
-                                (route) => false,
-                              );
-                            },
+                            subtitle: 'Sign out of your account',
+                            onTap: _handleLogout,
                           ),
                         ],
                       ),
@@ -232,13 +366,13 @@ class ProfileScreen extends StatelessWidget {
     required String subtitle,
     bool hasSwitch = false,
     bool switchValue = false,
-    bool isDestructive = false,
     required VoidCallback onTap,
+    Function(bool)? onSwitchChanged,
   }) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onTap,
+        onTap: hasSwitch ? null : onTap,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
@@ -248,9 +382,7 @@ class ProfileScreen extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: isDestructive
-                      ? Colors.white.withValues(alpha: 0.1)
-                      : Colors.white.withValues(alpha: 0.1),
+                  color: Colors.white.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(icon, color: Colors.white, size: 20),
@@ -262,7 +394,7 @@ class ProfileScreen extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: TextStyle(
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
@@ -270,7 +402,10 @@ class ProfileScreen extends StatelessWidget {
                     ),
                     Text(
                       subtitle,
-                      style: TextStyle(color: Colors.white70, fontSize: 14),
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 14,
+                      ),
                     ),
                   ],
                 ),
@@ -278,14 +413,16 @@ class ProfileScreen extends StatelessWidget {
               if (hasSwitch)
                 Switch(
                   value: switchValue,
-                  onChanged: (value) {
-                    // Handle switch toggle
-                  },
+                  onChanged: onSwitchChanged,
                   activeColor: const Color(0xFF00A8FF),
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 )
               else
-                Icon(Icons.chevron_right, color: Colors.white70, size: 20),
+                const Icon(
+                  Icons.chevron_right,
+                  color: Colors.white70,
+                  size: 20,
+                ),
             ],
           ),
         ),

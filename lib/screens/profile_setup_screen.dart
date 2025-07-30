@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'home_screen.dart';
+import 'fingerprint_authentication.dart';
+import '../services/database_service.dart';
+import '../models/user.dart';
 
 class ProfileSetupScreen extends StatefulWidget {
   final String phoneNumber;
@@ -13,7 +15,8 @@ class ProfileSetupScreen extends StatefulWidget {
 class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _bioController = TextEditingController();
-  bool isLoading = false;
+  final DatabaseService _databaseService = DatabaseService();
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -22,7 +25,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     super.dispose();
   }
 
-  void _handleSave() async {
+  Future<void> _saveProfile() async {
     if (_nameController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -34,23 +37,52 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     }
 
     setState(() {
-      isLoading = true;
+      _isLoading = true;
     });
 
-    // Simulate API call to save profile
-    await Future.delayed(const Duration(seconds: 2));
+    try {
+      // Create user object
+      final user = User(
+        name: _nameController.text.trim(),
+        phone: widget.phoneNumber,
+        bio: _bioController.text.trim().isEmpty
+            ? null
+            : _bioController.text.trim(),
+        createdAt: DateTime.now().millisecondsSinceEpoch,
+      );
 
-    if (mounted) {
+      // Save to database
+      await _databaseService.insertUser(user);
+
       setState(() {
-        isLoading = false;
+        _isLoading = false;
       });
 
-      // Navigate to home screen
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
-        (route) => false,
-      );
+      // Navigate to fingerprint setup for new users
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => FingerprintAuthScreen(
+              phoneNumber: widget.phoneNumber,
+              isSetup: true, // This is setup mode for new users
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving profile: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -293,7 +325,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                       width: double.infinity,
                       height: 56,
                       child: ElevatedButton(
-                        onPressed: isLoading ? null : _handleSave,
+                        onPressed: _isLoading ? null : _saveProfile,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF4A90A4),
                           foregroundColor: Colors.white,
@@ -302,7 +334,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                           ),
                           elevation: 0,
                         ),
-                        child: isLoading
+                        child: _isLoading
                             ? const SizedBox(
                                 width: 20,
                                 height: 20,
