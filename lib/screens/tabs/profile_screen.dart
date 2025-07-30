@@ -76,9 +76,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         builder: (BuildContext context) {
           return AlertDialog(
             title: const Text('Logout'),
-            content: const Text(
-              'Are you sure you want to logout?',
-            ),
+            content: const Text('Are you sure you want to logout?'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(false),
@@ -96,7 +94,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (confirmLogout == true) {
         // Get current user phone before clearing session
         final String? currentUserPhone = await _sessionService.getCurrentUser();
-        
+
         // Clear current session but keep last authenticated user
         await _sessionService.clearSession();
 
@@ -114,7 +112,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           );
         } else {
           // Fallback to login if no current user found
-          Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+          Navigator.pushNamedAndRemoveUntil(
+            context,
+            '/login',
+            (route) => false,
+          );
         }
       }
     } catch (e) {

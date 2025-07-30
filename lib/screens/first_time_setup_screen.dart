@@ -158,10 +158,7 @@ class _FirstTimeSetupScreenState extends State<FirstTimeSetupScreen> {
                     const SizedBox(height: 8),
                     const Text(
                       'Enter your details to get started with ChatLink',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 16,
-                      ),
+                      style: TextStyle(color: Colors.white70, fontSize: 16),
                     ),
 
                     const SizedBox(height: 40),

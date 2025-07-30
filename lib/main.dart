@@ -13,8 +13,6 @@ void main() async {
   // Initialize database
   final dbService = DatabaseService();
   await dbService.database; // This will create the database and tables
-  
-
 
   runApp(const MyApp());
 }
@@ -135,9 +133,7 @@ class _AppInitializerState extends State<AppInitializer> {
     // that includes phone number collection as well
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(
-        builder: (context) => const FirstTimeSetupScreen(),
-      ),
+      MaterialPageRoute(builder: (context) => const FirstTimeSetupScreen()),
     );
   }
 
