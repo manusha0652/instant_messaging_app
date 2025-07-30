@@ -32,7 +32,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
     try {
       // Request permission first
       await _requestCameraPermission();
-      
+
       // Initialize camera controller
       cameraController = MobileScannerController(
         facing: CameraFacing.back,
@@ -54,11 +54,13 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
 
   Future<void> _requestCameraPermission() async {
     final status = await Permission.camera.request();
-    
+
     if (status.isDenied) {
       throw Exception('Camera permission is required to scan QR codes');
     } else if (status.isPermanentlyDenied) {
-      throw Exception('Camera permission permanently denied. Please enable in settings.');
+      throw Exception(
+        'Camera permission permanently denied. Please enable in settings.',
+      );
     }
   }
 
@@ -143,7 +145,11 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.camera_alt_outlined, color: Colors.white, size: 64),
+              const Icon(
+                Icons.camera_alt_outlined,
+                color: Colors.white,
+                size: 64,
+              ),
               const SizedBox(height: 16),
               const Text(
                 'Camera Error',
@@ -204,11 +210,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(
-                      Icons.error,
-                      color: Colors.red,
-                      size: 64,
-                    ),
+                    const Icon(Icons.error, color: Colors.red, size: 64),
                     const SizedBox(height: 16),
                     Text(
                       'Camera Error: \\${error.errorCode}',
@@ -235,9 +237,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
             return Container(
               color: Colors.black,
               child: const Center(
-                child: CircularProgressIndicator(
-                  color: Color(0xFF00A8FF),
-                ),
+                child: CircularProgressIndicator(color: Color(0xFF00A8FF)),
               ),
             );
           },
@@ -247,10 +247,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
           width: 250,
           height: 250,
           decoration: BoxDecoration(
-            border: Border.all(
-              color: const Color(0xFF00A8FF),
-              width: 3,
-            ),
+            border: Border.all(color: const Color(0xFF00A8FF), width: 3),
             borderRadius: BorderRadius.circular(12),
           ),
         ),
@@ -267,11 +264,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
       ),
       child: Column(
         children: [
-          const Icon(
-            Icons.check_circle,
-            color: Colors.green,
-            size: 48,
-          ),
+          const Icon(Icons.check_circle, color: Colors.green, size: 48),
           const SizedBox(height: 12),
           const Text(
             'Contact Found!',
@@ -284,10 +277,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
           const SizedBox(height: 8),
           const Text(
             'Tap to add contact and start chatting',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 14,
-            ),
+            style: TextStyle(color: Colors.white70, fontSize: 14),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
@@ -304,10 +294,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
             icon: const Icon(Icons.person_add),
             label: const Text(
               'Add Contact',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -324,11 +311,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
       ),
       child: const Column(
         children: [
-          Icon(
-            Icons.qr_code_scanner,
-            color: Color(0xFF00A8FF),
-            size: 48,
-          ),
+          Icon(Icons.qr_code_scanner, color: Color(0xFF00A8FF), size: 48),
           SizedBox(height: 12),
           Text(
             'Point your camera at a QR code',
@@ -342,10 +325,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
           SizedBox(height: 8),
           Text(
             'The QR code will be scanned automatically',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 14,
-            ),
+            style: TextStyle(color: Colors.white70, fontSize: 14),
             textAlign: TextAlign.center,
           ),
         ],
@@ -400,7 +380,9 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
       }
 
       // Check if contact already exists
-      final existingSession = await _databaseService.getChatSessionByPhone(contactPhone);
+      final existingSession = await _databaseService.getChatSessionByPhone(
+        contactPhone,
+      );
       if (existingSession != null) {
         _showError('Contact already exists in your chat list');
         return;
@@ -410,12 +392,12 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
       await _databaseService.createChatSession(
         contactName: contactName,
         contactPhone: contactPhone,
-        contactAvatar: 'https://api.dicebear.com/7.x/avataaars/png?seed=$contactName&backgroundColor=1e3a5f',
+        contactAvatar:
+            'https://api.dicebear.com/7.x/avataaars/png?seed=$contactName&backgroundColor=1e3a5f',
       );
 
       // Show success message
       _showSuccessDialog(contactName);
-
     } catch (e) {
       _showError('Failed to add contact: ${e.toString()}');
     }
