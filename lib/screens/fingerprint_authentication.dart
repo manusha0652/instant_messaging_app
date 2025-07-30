@@ -131,7 +131,7 @@ class _FingerprintAuthScreenState extends State<FingerprintAuthScreen> {
         await _databaseService.updateUser(updatedUser);
 
         await _sessionService.saveUserSession(widget.phoneNumber);
-        
+
         if (widget.isSetup) {
           _showSuccessAndNavigate('PIN setup completed successfully!');
         } else {
@@ -175,7 +175,7 @@ class _FingerprintAuthScreenState extends State<FingerprintAuthScreen> {
           _statusMessage = 'No PIN found. Creating new PIN...';
           _isCreatingNewPin = true;
         });
-        
+
         // Switch to PIN setup mode
         await _handlePinSetup(pin);
       } else {
@@ -445,8 +445,10 @@ class _FingerprintAuthScreenState extends State<FingerprintAuthScreen> {
               widget.isSetup
                   ? (_isConfirmingPin ? 'Confirm Your PIN' : 'Set Up PIN')
                   : _isCreatingNewPin
-                      ? (_isConfirmingPin ? 'Confirm Your New PIN' : 'Create Your PIN')
-                      : 'Enter Your PIN',
+                  ? (_isConfirmingPin
+                        ? 'Confirm Your New PIN'
+                        : 'Create Your PIN')
+                  : 'Enter Your PIN',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 22,
@@ -464,10 +466,10 @@ class _FingerprintAuthScreenState extends State<FingerprintAuthScreen> {
                         ? 'Re-enter your 6-digit PIN to confirm'
                         : 'Create a 6-digit PIN to secure your account')
                   : _isCreatingNewPin
-                      ? (_isConfirmingPin
-                            ? 'Re-enter your 6-digit PIN to confirm'
-                            : 'No PIN found. Create a 6-digit PIN for your account')
-                      : 'Enter your 6-digit PIN to access your account',
+                  ? (_isConfirmingPin
+                        ? 'Re-enter your 6-digit PIN to confirm'
+                        : 'No PIN found. Create a 6-digit PIN for your account')
+                  : 'Enter your 6-digit PIN to access your account',
               style: const TextStyle(
                 color: Colors.white70,
                 fontSize: 14,
@@ -510,7 +512,10 @@ class _FingerprintAuthScreenState extends State<FingerprintAuthScreen> {
                     color: index < _enteredPin.length
                         ? const Color(0xFF00A8FF)
                         : const Color(0xFF2A4A6B),
-                    border: Border.all(color: const Color(0xFF00A8FF), width: 1),
+                    border: Border.all(
+                      color: const Color(0xFF00A8FF),
+                      width: 1,
+                    ),
                   ),
                 );
               }),
@@ -519,7 +524,7 @@ class _FingerprintAuthScreenState extends State<FingerprintAuthScreen> {
             const SizedBox(height: 20),
 
             // Status message
-            if (_statusMessage.isNotEmpty) 
+            if (_statusMessage.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(bottom: 16),
                 child: _buildStatusMessage(),
