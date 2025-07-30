@@ -12,6 +12,8 @@ void main() async {
   // Initialize database
   final dbService = DatabaseService();
   await dbService.database; // This will create the database and tables
+  
+
 
   runApp(const MyApp());
 }
