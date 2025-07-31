@@ -50,27 +50,39 @@ class UserSessionService {
   }
 
   // Clear user session (logout)
-  Future<void> logout() async {
+  Future<void> clearSession() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('current_user');
+    await prefs.remove('last_authenticated_user');
     await prefs.remove('login_timestamp');
   }
 
-  // Clear all session data
-  Future<void> clearSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
+  // Legacy method name for compatibility
+  Future<void> logout() async {
+    await clearSession();
   }
 
-  // Check if user has ever logged in before
-  Future<bool> hasLoggedInBefore() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('last_authenticated_user') != null;
-  }
-
-  // Enable/disable biometric authentication
+  // Enable/disable biometric authentication for user
   Future<void> setBiometricEnabled(String phoneNumber, bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('biometric_enabled_$phoneNumber', enabled);
+  }
+
+  // Check if this is user's first time setup
+  Future<bool> isFirstTimeUser(String phoneNumber) async {
+    final prefs = await SharedPreferences.getInstance();
+    return !prefs.containsKey('setup_completed_$phoneNumber');
+  }
+
+  // Mark user setup as completed
+  Future<void> markSetupCompleted(String phoneNumber) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('setup_completed_$phoneNumber', true);
+  }
+
+  // Check if user has logged in before (legacy method name for compatibility)
+  Future<bool> hasLoggedInBefore() async {
+    final currentUser = await getCurrentUser();
+    return currentUser != null;
   }
 }

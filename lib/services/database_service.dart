@@ -320,7 +320,7 @@ class DatabaseService {
     );
   }
 
-  // Contact operations for QR code connections
+  // Contact operations (for QR code connections)
   Future<int> addContact({
     required int userId,
     required String contactPhone,
@@ -329,33 +329,57 @@ class DatabaseService {
     String? contactAvatar,
   }) async {
     final db = await database;
-    return await db.insert('contacts', {
-      'userId': userId,
-      'contactPhone': contactPhone,
-      'contactName': contactName,
-      'contactBio': contactBio,
-      'contactAvatar': contactAvatar,
-      'addedAt': DateTime.now().millisecondsSinceEpoch,
-      'isBlocked': 0,
-    });
+    try {
+      return await db.insert('contacts', {
+        'userId': userId,
+        'contactPhone': contactPhone,
+        'contactName': contactName,
+        'contactBio': contactBio,
+        'contactAvatar': contactAvatar,
+        'addedAt': DateTime.now().millisecondsSinceEpoch,
+        'isBlocked': 0,
+      });
+    } catch (e) {
+      // Contact already exists, update it
+      return await db.update(
+        'contacts',
+        {
+          'contactName': contactName,
+          'contactBio': contactBio,
+          'contactAvatar': contactAvatar,
+        },
+        where: 'userId = ? AND contactPhone = ?',
+        whereArgs: [userId, contactPhone],
+      );
+    }
   }
 
-  Future<List<Map<String, dynamic>>> getUserContacts(int userId) async {
-    final db = await database;
-    return await db.query(
-      'contacts',
-      where: 'userId = ? AND isBlocked = 0',
-      whereArgs: [userId],
-      orderBy: 'contactName ASC',
-    );
-  }
-
-  Future<Map<String, dynamic>?> getContactByPhone(int userId, String phone) async {
+  Future<bool> isContactExists(int userId, String contactPhone) async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
       'contacts',
       where: 'userId = ? AND contactPhone = ?',
-      whereArgs: [userId, phone],
+      whereArgs: [userId, contactPhone],
+    );
+    return maps.isNotEmpty;
+  }
+
+  Future<List<Map<String, dynamic>>> getAllContacts(int userId) async {
+    final db = await database;
+    return await db.query(
+      'contacts',
+      where: 'userId = ? AND isBlocked = ?',
+      whereArgs: [userId, 0],
+      orderBy: 'contactName ASC',
+    );
+  }
+
+  Future<Map<String, dynamic>?> getContactByPhone(int userId, String contactPhone) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'contacts',
+      where: 'userId = ? AND contactPhone = ?',
+      whereArgs: [userId, contactPhone],
     );
 
     if (maps.isNotEmpty) {

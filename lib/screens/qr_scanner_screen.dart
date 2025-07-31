@@ -354,40 +354,34 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
   }
 
   void _onDetect(BarcodeCapture capture) {
-    if (_hasScanned) return;
-
     final List<Barcode> barcodes = capture.barcodes;
-    if (barcodes.isNotEmpty) {
-      final barcode = barcodes.first;
-      if (barcode.rawValue != null) {
+    for (final barcode in barcodes) {
+      if (barcode.rawValue != null && !_hasScanned) {
         setState(() {
           result = barcode.rawValue;
-          _hasScanned = true;
         });
         _handleScanResult(barcode.rawValue!);
+        break;
       }
     }
   }
 
-  Future<void> _handleScanResult(String scanResult) async {
+  Future<void> _handleScanResult(String scannedData) async {
+    if (_hasScanned) return;
+    _hasScanned = true;
+
     try {
-      // Parse the QR code data
-      final data = json.decode(scanResult);
-
-      // Validate required fields
-      if (!data.containsKey('phone') || !data.containsKey('name')) {
-        _showErrorDialog('Invalid QR code format');
-        return;
-      }
-
-      final contactPhone = data['phone'] as String;
-      final contactName = data['name'] as String;
-      final contactBio = data['bio'] as String?;
+      // Parse QR code data
+      final qrData = jsonDecode(scannedData);
+      final contactPhone = qrData['phone'] as String;
+      final contactName = qrData['name'] as String;
+      final contactBio = qrData['bio'] as String?;
+      final socketId = qrData['socketId'] as String?;
 
       // Get current user
       final currentUserPhone = await _sessionService.getCurrentUser();
       if (currentUserPhone == null) {
-        _showErrorDialog('User not logged in');
+        _showErrorDialog('User session not found');
         return;
       }
 
@@ -397,24 +391,20 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
         return;
       }
 
-      // Check if trying to add self
+      // Check if trying to add themselves
       if (contactPhone == currentUserPhone) {
         _showErrorDialog('You cannot add yourself as a contact');
         return;
       }
 
       // Check if contact already exists
-      final existingContact = await _databaseService.getContactByPhone(
-        currentUser.id!,
-        contactPhone,
-      );
-
-      if (existingContact != null) {
+      final existingContact = await _databaseService.isContactExists(currentUser.id!, contactPhone);
+      if (existingContact) {
         _showErrorDialog('Contact already exists');
         return;
       }
 
-      // Add contact
+      // Add contact to database
       await _databaseService.addContact(
         userId: currentUser.id!,
         contactPhone: contactPhone,
@@ -422,76 +412,59 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
         contactBio: contactBio,
       );
 
-      // Create chat session
-      await _databaseService.createChatSessionForUser(
-        userId: currentUser.id!,
-        contactName: contactName,
-        contactPhone: contactPhone,
-      );
+      // Create or get chat session
+      final existingSession = await _databaseService.getChatSessionByUserAndPhone(currentUser.id!, contactPhone);
 
-      // Show success and navigate back
+      if (existingSession == null) {
+        await _databaseService.createChatSessionForUser(
+          userId: currentUser.id!,
+          contactName: contactName,
+          contactPhone: contactPhone,
+        );
+      }
+
+      // Show success dialog
       _showSuccessDialog(contactName);
-    } catch (e) {
-      print('Error handling scan result: $e');
-      _showErrorDialog('Failed to process QR code: $e');
-    }
-  }
 
-  void _showErrorDialog(String message) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF2A4A6B),
-        title: const Text(
-          'Error',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: Text(
-          message,
-          style: const TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              setState(() {
-                _hasScanned = false;
-                result = null;
-              });
-            },
-            child: const Text(
-              'Try Again',
-              style: TextStyle(color: Color(0xFF00A8FF)),
-            ),
-          ),
-        ],
-      ),
-    );
+    } catch (e) {
+      _showErrorDialog('Invalid QR code format');
+    }
   }
 
   void _showSuccessDialog(String contactName) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF2A4A6B),
-        title: const Text(
-          'Success!',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: Text(
-          'Contact "$contactName" has been added successfully!',
-          style: const TextStyle(color: Colors.white70),
-        ),
+        title: const Text('Contact Added'),
+        content: Text('$contactName has been added to your contacts!'),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
-              Navigator.of(context).pop(); // Go back to home
+              Navigator.of(context).pop(); // Go back to previous screen
             },
-            child: const Text(
-              'Done',
-              style: TextStyle(color: Color(0xFF00A8FF)),
-            ),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showErrorDialog(String error) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Error'),
+        content: Text(error),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              setState(() {
+                _hasScanned = false; // Allow scanning again
+              });
+            },
+            child: const Text('OK'),
           ),
         ],
       ),

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import '../services/database_service.dart';
 import '../services/user_session_service.dart';
-import '../services/websocket_service.dart';
+import '../services/local_messaging_service.dart'; // Changed from websocket_service
 import '../models/message.dart';
 
 class RealTimeMessagingService {
@@ -12,7 +12,7 @@ class RealTimeMessagingService {
 
   final DatabaseService _databaseService = DatabaseService();
   final UserSessionService _sessionService = UserSessionService();
-  final WebSocketService _webSocketService = WebSocketService();
+  final LocalMessagingService _localMessagingService = LocalMessagingService(); // Changed
 
   // Stream controllers for real-time messaging
   final StreamController<Message> _messageStreamController = StreamController<Message>.broadcast();
@@ -26,202 +26,124 @@ class RealTimeMessagingService {
   Stream<Map<String, dynamic>> get typingStatusStream => _typingStreamController.stream;
 
   bool _isInitialized = false;
-  StreamSubscription<Message>? _webSocketMessageSubscription;
-  StreamSubscription<Map<String, dynamic>>? _webSocketTypingSubscription;
-  StreamSubscription<Map<String, dynamic>>? _webSocketStatusSubscription;
+  StreamSubscription<Message>? _localMessageSubscription; // Changed
+  StreamSubscription<Map<String, dynamic>>? _localTypingSubscription; // Changed
+  StreamSubscription<Map<String, dynamic>>? _localStatusSubscription; // Changed
 
   /// Initialize the real-time messaging service
   Future<bool> initialize() async {
     if (_isInitialized) return true;
 
     try {
-      // Connect to WebSocket server
-      final connected = await _webSocketService.connect();
+      // Connect to local messaging service instead of WebSocket
+      final connected = await _localMessagingService.initialize();
       if (!connected) {
-        print('Failed to connect to WebSocket server');
+        print('Failed to initialize local messaging service');
         return false;
       }
 
-      // Subscribe to WebSocket events
-      _subscribeToWebSocketEvents();
+      // Subscribe to local messaging events
+      _subscribeToLocalMessagingEvents();
 
       _isInitialized = true;
-      print('Real-time messaging service initialized successfully');
+      print('Real-time messaging service initialized successfully with local storage');
       return true;
-
     } catch (e) {
-      print('Error initializing real-time messaging service: $e');
+      print('Failed to initialize real-time messaging service: $e');
       return false;
     }
   }
 
-  /// Subscribe to WebSocket events
-  void _subscribeToWebSocketEvents() {
-    // Forward messages from WebSocket to local stream
-    _webSocketMessageSubscription = _webSocketService.messageStream.listen(
-      (message) {
-        _messageStreamController.add(message);
-      },
-      onError: (error) {
-        print('WebSocket message stream error: $error');
-      },
-    );
+  /// Subscribe to local messaging events
+  void _subscribeToLocalMessagingEvents() {
+    // Subscribe to message stream
+    _localMessageSubscription = _localMessagingService.messageStream.listen((message) {
+      _messageStreamController.add(message);
+    });
 
-    // Forward typing indicators from WebSocket to local stream
-    _webSocketTypingSubscription = _webSocketService.typingStream.listen(
-      (typingData) {
-        _typingStreamController.add(typingData);
-      },
-      onError: (error) {
-        print('WebSocket typing stream error: $error');
-      },
-    );
+    // Subscribe to typing status stream
+    _localTypingSubscription = _localMessagingService.typingStatusStream.listen((typingData) {
+      _typingStreamController.add(typingData);
+    });
 
-    // Forward user status updates from WebSocket to local stream
-    _webSocketStatusSubscription = _webSocketService.userStatusStream.listen(
-      (statusData) {
-        _userStatusStreamController.add(statusData);
-      },
-      onError: (error) {
-        print('WebSocket status stream error: $error');
-      },
-    );
+    // Subscribe to user status stream
+    _localStatusSubscription = _localMessagingService.userStatusStream.listen((statusData) {
+      _userStatusStreamController.add(statusData);
+    });
   }
 
-  /// Send message to specific contact via WebSocket
-  Future<bool> sendMessageToContact({
+  /// Send message to contact
+  Future<bool> sendMessage({
     required String contactPhone,
-    required String message,
-    required int sessionId,
+    required String content,
+    String messageType = 'text',
   }) async {
-    try {
-      // Save message to database first
-      await _databaseService.insertMessage(
-        sessionId: sessionId,
-        content: message,
-        isFromMe: true,
-      );
-
-      // Send via WebSocket for real-time delivery
-      final success = await _webSocketService.sendMessage(
-        toPhone: contactPhone,
-        content: message,
-        sessionId: sessionId,
-      );
-
-      if (!success) {
-        print('Failed to send message via WebSocket');
-        // Fallback to offline message queue if needed
-      }
-
-      return success;
-    } catch (e) {
-      print('Error sending message: $e');
-      return false;
+    if (!_isInitialized) {
+      await initialize();
     }
+
+    return await _localMessagingService.sendMessage(
+      contactPhone: contactPhone,
+      content: content,
+      messageType: messageType,
+    );
   }
 
-  /// Send typing indicator to contact
-  void sendTypingIndicator(String toPhone, bool isTyping) {
-    _webSocketService.sendTypingIndicator(toPhone, isTyping);
+  /// Send typing indicator
+  Future<void> sendTypingStatus({
+    required String contactPhone,
+    required bool isTyping,
+  }) async {
+    if (!_isInitialized) return;
+
+    await _localMessagingService.sendTypingStatus(
+      contactPhone: contactPhone,
+      isTyping: isTyping,
+    );
   }
 
-  /// Join chat room for real-time messaging
-  void joinChatRoom(String contactPhone) {
-    _webSocketService.joinChatRoom(contactPhone);
+  /// Mark messages as read
+  Future<void> markMessagesAsRead(String contactPhone) async {
+    if (!_isInitialized) return;
+
+    await _localMessagingService.markMessagesAsRead(contactPhone);
   }
 
-  /// Leave chat room
-  void leaveChatRoom(String contactPhone) {
-    _webSocketService.leaveChatRoom(contactPhone);
-  }
-
-  /// Get online status of contact
-  Future<bool> isContactOnline(String contactPhone) async {
-    _webSocketService.requestUserStatus(contactPhone);
-
-    // Listen for status response
-    final completer = Completer<bool>();
-    late StreamSubscription subscription;
-
-    subscription = userStatusStream.listen((statusData) {
-      if (statusData['phone'] == contactPhone) {
-        completer.complete(statusData['status'] == 'online');
-        subscription.cancel();
-      }
-    });
-
-    // Timeout after 3 seconds
-    Timer(const Duration(seconds: 3), () {
-      if (!completer.isCompleted) {
-        completer.complete(false);
-        subscription.cancel();
-      }
-    });
-
-    return completer.future;
-  }
-
-  /// Get last seen timestamp of contact
+  /// Get contact last seen
   Future<DateTime?> getContactLastSeen(String contactPhone) async {
-    _webSocketService.requestUserStatus(contactPhone);
+    if (!_isInitialized) return null;
 
-    final completer = Completer<DateTime?>();
-    late StreamSubscription subscription;
-
-    subscription = userStatusStream.listen((statusData) {
-      if (statusData['phone'] == contactPhone) {
-        final lastSeen = statusData['lastSeen'];
-        if (lastSeen != null) {
-          completer.complete(DateTime.fromMillisecondsSinceEpoch(lastSeen));
-        } else {
-          completer.complete(null);
-        }
-        subscription.cancel();
-      }
-    });
-
-    Timer(const Duration(seconds: 3), () {
-      if (!completer.isCompleted) {
-        completer.complete(null);
-        subscription.cancel();
-      }
-    });
-
-    return completer.future;
+    return await _localMessagingService.getContactLastSeen(contactPhone);
   }
 
-  /// Mark message as read
-  void markMessageAsRead(String messageId, String fromPhone) {
-    _webSocketService.markMessageAsRead(messageId, fromPhone);
+  /// Join chat room (for local messaging compatibility)
+  Future<void> joinChatRoom(String contactPhone) async {
+    if (!_isInitialized) {
+      await initialize();
+    }
+    // In local messaging, we don't need to join rooms, but we can use this
+    // to initialize the chat session or mark as active
+    print('Joined chat with $contactPhone (local mode)');
   }
 
-  /// Update user's online status
-  void updateOnlineStatus(bool isOnline) {
-    _webSocketService.updateOnlineStatus(isOnline);
+  /// Check if contact is online (mock implementation for local messaging)
+  Future<bool> isContactOnline(String contactPhone) async {
+    if (!_isInitialized) return false;
+
+    // In local messaging mode, we can't determine online status
+    // Always return false for local mode
+    return false;
   }
 
-  /// Check if WebSocket is connected
-  bool get isConnected => _webSocketService.isConnected;
-
-  /// Reconnect to WebSocket if disconnected
-  Future<bool> reconnect() async {
-    return await _webSocketService.reconnect();
-  }
-
-  /// Disconnect from WebSocket
-  void disconnect() {
-    _webSocketService.disconnect();
-    _isInitialized = false;
-  }
-
-  // Clean up resources
+  /// Cleanup resources
   void dispose() {
+    _localMessageSubscription?.cancel();
+    _localTypingSubscription?.cancel();
+    _localStatusSubscription?.cancel();
     _messageStreamController.close();
     _typingStreamController.close();
     _userStatusStreamController.close();
-    _webSocketMessageSubscription?.cancel();
-    _webSocketTypingSubscription?.cancel();
-    _webSocketStatusSubscription?.cancel();
+    _localMessagingService.dispose();
+    _isInitialized = false;
   }
 }

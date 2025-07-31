@@ -80,4 +80,9 @@ class User {
       createdAt: createdAt ?? this.createdAt,
     );
   }
+
+  @override
+  String toString() {
+    return 'User{id: $id, name: $name, phone: $phone, bio: $bio, socketId: $socketId, isOnline: $isOnline}';
+  }
 }

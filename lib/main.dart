@@ -1,44 +1,29 @@
 import 'package:flutter/material.dart';
 import 'screens/splash_screen.dart';
-import 'screens/login_screen.dart';
 import 'screens/first_time_setup_screen.dart';
-import 'screens/profile_setup_screen.dart';
+import 'screens/home_screen.dart';
 import 'screens/fingerprint_authentication.dart';
-import 'screens/home_screen.dart' as home;
-import 'screens/qr_scanner_screen.dart'; // Import the QR scanner screen
 import 'services/database_service.dart';
 import 'services/user_session_service.dart';
+import 'services/real_time_messaging_service.dart'; // Keep existing import
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  // Initialize database
-  final dbService = DatabaseService();
-  await dbService.database; // This will create the database and tables
-
-  runApp(const MyApp());
+void main() {
+  runApp(const ChatLinkApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class ChatLinkApp extends StatelessWidget {
+  const ChatLinkApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      debugShowCheckedModeBanner: false,
       title: 'ChatLink',
       theme: ThemeData(
         primarySwatch: Colors.blue,
         useMaterial3: true,
-        fontFamily: 'Roboto',
       ),
-      home:
-          const AppInitializer(), // Use initializer instead of direct SplashScreen
-      routes: {
-        '/login': (context) => const LoginScreen(),
-        '/home': (context) => const home.HomeScreen(),
-        '/qr_scanner': (context) => const QRScannerScreen(),
-      },
+      home: const AppInitializer(),
+      debugShowCheckedModeBanner: false,
     );
   }
 }
@@ -51,8 +36,9 @@ class AppInitializer extends StatefulWidget {
 }
 
 class _AppInitializerState extends State<AppInitializer> {
-  final UserSessionService _sessionService = UserSessionService();
   final DatabaseService _databaseService = DatabaseService();
+  final UserSessionService _sessionService = UserSessionService();
+  final RealTimeMessagingService _messagingService = RealTimeMessagingService(); // Initialize messaging service
 
   @override
   void initState() {
@@ -61,87 +47,101 @@ class _AppInitializerState extends State<AppInitializer> {
   }
 
   Future<void> _initializeApp() async {
-    // Show splash screen for minimum duration
-    await Future.delayed(const Duration(seconds: 2));
-
     try {
-      // First check if there are any users in the database
-      final bool hasAnyUsers = await _databaseService.hasAnyUsers();
+      // Initialize database
+      await _databaseService.database;
 
-      if (!hasAnyUsers) {
-        // No users in database - this is a brand new installation
-        // Go directly to profile setup for first user
-        _navigateToProfileSetup();
+      // Initialize local messaging service
+      await _messagingService.initialize();
+
+      // Check if there are any users in the database
+      final bool hasUsers = await _databaseService.hasAnyUsers();
+
+      if (!hasUsers) {
+        // First time setup - no users exist
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const FirstTimeSetupScreen()),
+          );
+        }
         return;
       }
 
-      // There are users in database - check session state
+      // Check if user has logged in before
       final bool hasLoggedInBefore = await _sessionService.hasLoggedInBefore();
 
-      if (hasLoggedInBefore) {
-        // Check if current session is valid
-        final String? currentUser = await _sessionService.getCurrentUser();
-        final bool isSessionValid = await _sessionService.isSessionValid();
+      if (!hasLoggedInBefore) {
+        // User exists but not logged in - go to first time setup
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const FirstTimeSetupScreen()),
+          );
+        }
+        return;
+      }
 
-        if (currentUser != null && isSessionValid) {
-          // User is already logged in - go directly to home
-          _navigateToHome();
+      // Get the last authenticated user
+      final String? lastUser = await _sessionService.getLastAuthenticatedUser();
+
+      if (lastUser != null) {
+        // Check if biometric is enabled for this user
+        final bool biometricEnabled = await _sessionService.isBiometricEnabled(lastUser);
+
+        if (biometricEnabled) {
+          // User has biometric enabled - go to fingerprint authentication
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => FingerprintAuthScreen(
+                  phoneNumber: lastUser,
+                  isSetup: false, // This is login mode for existing users
+                ),
+              ),
+            );
+          }
         } else {
-          // Session expired or no current user - get last authenticated user
-          final String? lastUser = await _sessionService
-              .getLastAuthenticatedUser();
-
-          if (lastUser != null) {
-            // User exists but needs to re-authenticate - go to fingerprint
-            _navigateToFingerprint(lastUser);
-          } else {
-            // No previous user found - go to login
-            _navigateToLogin();
+          // User doesn't have biometric - go directly to home
+          await _sessionService.saveUserSession(lastUser);
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const HomeScreen()),
+            );
           }
         }
       } else {
-        // Has users but no previous login - go to login screen
-        _navigateToLogin();
+        // No last user found - go to first time setup
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const FirstTimeSetupScreen()),
+          );
+        }
       }
     } catch (e) {
       print('Error initializing app: $e');
-      // On error, default to login screen
-      _navigateToLogin();
+      // On error, go to first time setup
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const FirstTimeSetupScreen()),
+        );
+      }
     }
-  }
-
-  void _navigateToHome() {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => const home.HomeScreen()),
-    );
-  }
-
-  void _navigateToFingerprint(String phoneNumber) {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) =>
-            FingerprintAuthScreen(phoneNumber: phoneNumber, isSetup: false),
-      ),
-    );
-  }
-
-  void _navigateToLogin() {
-    Navigator.pushReplacementNamed(context, '/login');
-  }
-
-  void _navigateToProfileSetup() {
-    // For first-time users, we'll navigate to a special setup flow
-    // that includes phone number collection as well
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => const FirstTimeSetupScreen()),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return const SplashScreen(); // Show splash while initializing
+    return const SplashScreen();
+  }
+
+  @override
+  void dispose() {
+    // Clean up messaging service when app is disposed
+    _messagingService.dispose();
+    super.dispose();
   }
 }
