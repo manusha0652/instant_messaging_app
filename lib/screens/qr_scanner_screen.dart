@@ -13,22 +13,54 @@ class QRScannerScreen extends StatefulWidget {
 }
 
 class _QRScannerScreenState extends State<QRScannerScreen> {
+  bool _torchOn = false;
   final DatabaseService _databaseService = DatabaseService();
   final UserSessionService _sessionService = UserSessionService();
-  MobileScannerController cameraController = MobileScannerController();
+  MobileScannerController? cameraController;
   String? result;
   bool _hasScanned = false;
+  bool _cameraInitialized = false;
+  String? _cameraError;
 
   @override
   void initState() {
     super.initState();
-    _requestCameraPermission();
+    _initializeCamera();
+  }
+
+  Future<void> _initializeCamera() async {
+    try {
+      // Request permission first
+      await _requestCameraPermission();
+
+      // Initialize camera controller
+      cameraController = MobileScannerController(
+        facing: CameraFacing.back,
+        torchEnabled: false,
+        returnImage: false,
+      );
+      setState(() {
+        _cameraInitialized = true;
+        _cameraError = null;
+      });
+    } catch (e) {
+      print('Camera initialization error: $e');
+      setState(() {
+        _cameraError = 'Failed to initialize camera: $e';
+        _cameraInitialized = false;
+      });
+    }
   }
 
   Future<void> _requestCameraPermission() async {
     final status = await Permission.camera.request();
+
     if (status.isDenied) {
-      _showError('Camera permission is required to scan QR codes');
+      throw Exception('Camera permission is required to scan QR codes');
+    } else if (status.isPermanentlyDenied) {
+      throw Exception(
+        'Camera permission permanently denied. Please enable in settings.',
+      );
     }
   }
 
@@ -48,18 +80,19 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
           ),
         ),
         actions: [
-          IconButton(
-            onPressed: () => cameraController.toggleTorch(),
-            icon: ValueListenableBuilder(
-              valueListenable: cameraController.torchState,
-              builder: (context, state, child) {
-                return Icon(
-                  state == TorchState.off ? Icons.flash_off : Icons.flash_on,
-                  color: Colors.white,
-                );
+          if (_cameraInitialized && cameraController != null)
+            IconButton(
+              onPressed: () {
+                cameraController!.toggleTorch();
+                setState(() {
+                  _torchOn = !_torchOn;
+                });
               },
+              icon: Icon(
+                _torchOn ? Icons.flash_on : Icons.flash_off,
+                color: Colors.white,
+              ),
             ),
-          ),
         ],
       ),
       body: Column(
@@ -80,21 +113,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(20),
-                child: MobileScanner(
-                  controller: cameraController,
-                  onDetect: _onQRViewCreated,
-                  overlay: Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: const Color(0xFF00A8FF),
-                        width: 3,
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    width: 250,
-                    height: 250,
-                  ),
-                ),
+                child: _buildCameraView(),
               ),
             ),
           ),
@@ -118,6 +137,120 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
     );
   }
 
+  Widget _buildCameraView() {
+    if (_cameraError != null) {
+      return Container(
+        color: Colors.black,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.camera_alt_outlined,
+                color: Colors.white,
+                size: 64,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Camera Error',
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _cameraError!,
+                style: const TextStyle(color: Colors.white70),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _initializeCamera,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF00A8FF),
+                ),
+                child: const Text(
+                  'Retry',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (!_cameraInitialized) {
+      return Container(
+        color: Colors.black,
+        child: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(color: Color(0xFF00A8FF)),
+              SizedBox(height: 16),
+              Text(
+                'Initializing Camera...',
+                style: TextStyle(color: Colors.white),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        MobileScanner(
+          controller: cameraController!,
+          onDetect: _onQRViewCreated,
+          errorBuilder: (context, error, child) => Container(
+            color: Colors.black,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error, color: Colors.red, size: 64),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Camera Error: ${error.errorCode}',
+                    style: const TextStyle(color: Colors.white),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00A8FF),
+                    ),
+                    child: const Text(
+                      'Go Back',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          placeholderBuilder: (context, child) => Container(
+            color: Colors.black,
+            child: const Center(
+              child: CircularProgressIndicator(color: Color(0xFF00A8FF)),
+            ),
+          ),
+        ),
+        // Custom overlay
+        Container(
+          width: 250,
+          height: 250,
+          decoration: BoxDecoration(
+            border: Border.all(color: const Color(0xFF00A8FF), width: 3),
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildScannedResult() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -127,11 +260,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
       ),
       child: Column(
         children: [
-          const Icon(
-            Icons.check_circle,
-            color: Colors.green,
-            size: 48,
-          ),
+          const Icon(Icons.check_circle, color: Colors.green, size: 48),
           const SizedBox(height: 12),
           const Text(
             'Contact Found!',
@@ -144,10 +273,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
           const SizedBox(height: 8),
           const Text(
             'Tap to add contact and start chatting',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 14,
-            ),
+            style: TextStyle(color: Colors.white70, fontSize: 14),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
@@ -164,10 +290,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
             icon: const Icon(Icons.person_add),
             label: const Text(
               'Add Contact',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -184,11 +307,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
       ),
       child: const Column(
         children: [
-          Icon(
-            Icons.qr_code_scanner,
-            color: Color(0xFF00A8FF),
-            size: 48,
-          ),
+          Icon(Icons.qr_code_scanner, color: Color(0xFF00A8FF), size: 48),
           SizedBox(height: 12),
           Text(
             'Point your camera at a QR code',
@@ -202,10 +321,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
           SizedBox(height: 8),
           Text(
             'The QR code will be scanned automatically',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 14,
-            ),
+            style: TextStyle(color: Colors.white70, fontSize: 14),
             textAlign: TextAlign.center,
           ),
         ],
@@ -219,17 +335,20 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
       if (barcode.rawValue != null) {
         setState(() {
           result = barcode.rawValue;
+          _hasScanned = true;
         });
       }
     }
   }
 
   Future<void> _handleScanResult(String scanResult) async {
-    if (_hasScanned) return;
-
-    setState(() {
-      _hasScanned = true;
-    });
+    if (!_hasScanned) {
+      setState(() {
+        _hasScanned = true;
+      });
+    } else {
+      return;
+    }
 
     try {
       // Parse the QR code data
@@ -257,7 +376,9 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
       }
 
       // Check if contact already exists
-      final existingSession = await _databaseService.getChatSessionByPhone(contactPhone);
+      final existingSession = await _databaseService.getChatSessionByPhone(
+        contactPhone,
+      );
       if (existingSession != null) {
         _showError('Contact already exists in your chat list');
         return;
@@ -267,12 +388,12 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
       await _databaseService.createChatSession(
         contactName: contactName,
         contactPhone: contactPhone,
-        contactAvatar: 'https://api.dicebear.com/7.x/avataaars/png?seed=$contactName&backgroundColor=1e3a5f',
+        contactAvatar:
+            'https://api.dicebear.com/7.x/avataaars/png?seed=$contactName&backgroundColor=1e3a5f',
       );
 
       // Show success message
       _showSuccessDialog(contactName);
-
     } catch (e) {
       _showError('Failed to add contact: ${e.toString()}');
     }
@@ -336,7 +457,9 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
 
   @override
   void dispose() {
-    cameraController.dispose();
+    if (cameraController != null) {
+      cameraController!.dispose();
+    }
     super.dispose();
   }
 }
