@@ -5,6 +5,7 @@ import 'screens/first_time_setup_screen.dart';
 import 'screens/profile_setup_screen.dart';
 import 'screens/fingerprint_authentication.dart';
 import 'screens/home_screen.dart' as home;
+import 'screens/qr_scanner_screen.dart'; // Import the QR scanner screen
 import 'services/database_service.dart';
 import 'services/user_session_service.dart';
 
@@ -36,6 +37,7 @@ class MyApp extends StatelessWidget {
       routes: {
         '/login': (context) => const LoginScreen(),
         '/home': (context) => const home.HomeScreen(),
+        '/qr_scanner': (context) => const QRScannerScreen(),
       },
     );
   }

@@ -19,9 +19,12 @@ class DatabaseService {
   Future<Database> _initDatabase() async {
     String path = join(await getDatabasesPath(), 'chatlink.db');
 
+    // Force delete existing database to recreate with new schema
+    await deleteDatabase(path);
+
     return await openDatabase(
       path,
-      version: 3, // Increment to version 3 to force migration
+      version: 3,
       onCreate: _createTables,
       onUpgrade: _upgradeDatabase,
     );
