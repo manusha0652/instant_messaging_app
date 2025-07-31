@@ -42,13 +42,18 @@ class _QRProfileScreenState extends State<QRProfileScreen> {
           final String socketId = _generateSocketId();
 
           // Create QR data with user information
-          final Map<String, String> qrInfo = {
+          final Map<String, dynamic> qrInfo = {
             'type': 'chatlink_contact',
             'phone': user.phone,
             'name': user.name,
+            'bio': user.bio ?? 'Hey there! I am using ChatLink.',
             'socketId': socketId,
             'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
           };
+
+          // Update user's socket ID in database
+          final updatedUser = user.copyWith(socketId: socketId);
+          await _databaseService.updateUser(updatedUser);
 
           setState(() {
             _currentUser = user;
@@ -56,23 +61,30 @@ class _QRProfileScreenState extends State<QRProfileScreen> {
             _qrData = jsonEncode(qrInfo);
             _isLoading = false;
           });
+        } else {
+          setState(() {
+            _isLoading = false;
+          });
+          _showError('User not found');
         }
+      } else {
+        setState(() {
+          _isLoading = false;
+        });
+        _showError('No user session found');
       }
     } catch (e) {
       setState(() {
         _isLoading = false;
       });
-      _showError('Error loading user data: $e');
+      _showError('Failed to load user data: $e');
     }
   }
 
   String _generateSocketId() {
-    // Generate a unique socket ID (8 characters)
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     final random = Random();
-    return String.fromCharCodes(
-      Iterable.generate(8, (_) => chars.codeUnitAt(random.nextInt(chars.length))),
-    );
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    return List.generate(12, (index) => chars[random.nextInt(chars.length)]).join();
   }
 
   void _copyToClipboard() {
@@ -80,9 +92,8 @@ class _QRProfileScreenState extends State<QRProfileScreen> {
       Clipboard.setData(ClipboardData(text: _qrData));
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('QR data copied to clipboard!'),
-          backgroundColor: Color(0xFF00A8FF),
-          duration: Duration(seconds: 2),
+          content: Text('QR code data copied to clipboard'),
+          backgroundColor: Colors.green,
         ),
       );
     }
@@ -96,14 +107,12 @@ class _QRProfileScreenState extends State<QRProfileScreen> {
   }
 
   void _showError(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+      ),
+    );
   }
 
   @override

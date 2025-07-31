@@ -52,37 +52,7 @@ class _HomeScreenState extends State<HomeScreen> {
               label: 'Chats',
               index: 0,
             ),
-            // Center robot icon
-            GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const QRScannerScreen(), // Replace with your QR scanner screen
-                  ),
-                );
-              },
-              child: Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF00A8FF),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF00A8FF).withOpacity(0.3),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.qr_code_scanner,
-                  color: Colors.white,
-                  size: 28,
-                ),
-              ),
-            ),
+            _buildQRNavItem(), // Special QR button
             _buildNavItem(
               icon: Icons.person_outline,
               activeIcon: Icons.person,
@@ -101,29 +71,63 @@ class _HomeScreenState extends State<HomeScreen> {
     required String label,
     required int index,
   }) {
-    final isSelected = _selectedIndex == index;
+    final isActive = _selectedIndex == index;
     return GestureDetector(
       onTap: () => _onItemTapped(index),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              isSelected ? activeIcon : icon,
-              color: isSelected ? const Color(0xFF00A8FF) : Colors.white54,
-              size: 24,
+              isActive ? activeIcon : icon,
+              color: isActive ? const Color(0xFF00A8FF) : Colors.white60,
+              size: 28,
             ),
             const SizedBox(height: 4),
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? const Color(0xFF00A8FF) : Colors.white54,
+                color: isActive ? const Color(0xFF00A8FF) : Colors.white60,
                 fontSize: 12,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQRNavItem() {
+    return GestureDetector(
+      onTap: () {
+        // Navigate to QR Scanner Screen
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const QRScannerScreen(),
+          ),
+        );
+      },
+      child: Container(
+        width: 60,
+        height: 60,
+        decoration: BoxDecoration(
+          color: const Color(0xFF00A8FF),
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF00A8FF).withOpacity(0.3),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: const Icon(
+          Icons.qr_code_scanner,
+          color: Colors.white,
+          size: 30,
         ),
       ),
     );

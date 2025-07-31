@@ -31,7 +31,13 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
   Future<void> _initializeCamera() async {
     try {
       // Request permission first
-      await _requestCameraPermission();
+      final status = await Permission.camera.request();
+      if (status.isDenied) {
+        setState(() {
+          _cameraError = 'Camera permission denied';
+        });
+        return;
+      }
 
       // Initialize camera controller
       cameraController = MobileScannerController(
@@ -39,6 +45,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
         torchEnabled: false,
         returnImage: false,
       );
+
       setState(() {
         _cameraInitialized = true;
         _cameraError = null;
@@ -53,14 +60,12 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
   }
 
   Future<void> _requestCameraPermission() async {
-    final status = await Permission.camera.request();
-
+    final status = await Permission.camera.status;
     if (status.isDenied) {
-      throw Exception('Camera permission is required to scan QR codes');
-    } else if (status.isPermanentlyDenied) {
-      throw Exception(
-        'Camera permission permanently denied. Please enable in settings.',
-      );
+      final result = await Permission.camera.request();
+      if (result.isDenied) {
+        throw Exception('Camera permission is required to scan QR codes');
+      }
     }
   }
 
@@ -95,44 +100,58 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
             ),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            flex: 4,
-            child: Container(
-              margin: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    blurRadius: 15,
-                    offset: const Offset(0, 5),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Camera section - responsive height
+            Flexible(
+              flex: 3,
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.6,
+                  minHeight: 300,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      blurRadius: 15,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: _buildCameraView(),
+                ),
+              ),
+            ),
+
+            // Bottom section - adaptive height
+            Flexible(
+              flex: 1,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (result != null && !_hasScanned)
+                        _buildScannedResult()
+                      else
+                        _buildInstructions(),
+                      const SizedBox(height: 16),
+                    ],
                   ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: _buildCameraView(),
+                ),
               ),
             ),
-          ),
-          Expanded(
-            flex: 1,
-            child: Container(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (result != null && !_hasScanned)
-                    _buildScannedResult()
-                  else
-                    _buildInstructions(),
-                ],
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -202,7 +221,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
       children: [
         MobileScanner(
           controller: cameraController!,
-          onDetect: _onQRViewCreated,
+          onDetect: _onDetect,
           errorBuilder: (context, error, child) => Container(
             color: Colors.black,
             child: Center(
@@ -278,7 +297,17 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
           ),
           const SizedBox(height: 16),
           ElevatedButton.icon(
-            onPressed: () => _handleScanResult(result!),
+            onPressed: () {
+              // Process the scanned result directly
+              if (result != null) {
+                try {
+                  final qrData = jsonDecode(result!);
+                  _handleQRCodeData(qrData);
+                } catch (e) {
+                  _showErrorDialog('Invalid QR Code', 'This QR code is not from ChatLink app.');
+                }
+              }
+            },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF00A8FF),
               foregroundColor: Colors.white,
@@ -329,128 +358,145 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
     );
   }
 
-  void _onQRViewCreated(BarcodeCapture capture) {
-    if (!_hasScanned && capture.barcodes.isNotEmpty) {
-      final barcode = capture.barcodes.first;
-      if (barcode.rawValue != null) {
-        setState(() {
-          result = barcode.rawValue;
-          _hasScanned = true;
-        });
-      }
+  void _onDetect(BarcodeCapture capture) async {
+    if (_hasScanned) return;
+
+    final List<Barcode> barcodes = capture.barcodes;
+    if (barcodes.isEmpty) return;
+
+    final barcode = barcodes.first;
+    if (barcode.rawValue == null) return;
+
+    setState(() {
+      _hasScanned = true;
+      result = barcode.rawValue!;
+    });
+
+    // Parse QR code data
+    try {
+      final qrData = jsonDecode(result!);
+      await _handleQRCodeData(qrData);
+    } catch (e) {
+      _showErrorDialog('Invalid QR Code', 'This QR code is not from ChatLink app.');
     }
   }
 
-  Future<void> _handleScanResult(String scanResult) async {
-    if (!_hasScanned) {
-      setState(() {
-        _hasScanned = true;
-      });
-    } else {
-      return;
-    }
-
+  Future<void> _handleQRCodeData(Map<String, dynamic> qrData) async {
     try {
-      // Parse the QR code data
-      final Map<String, dynamic> qrData = jsonDecode(scanResult);
-
       // Validate QR code format
-      if (qrData['type'] != 'chatlink_contact') {
-        _showError('Invalid QR code format');
-        return;
+      if (!qrData.containsKey('phone') || !qrData.containsKey('name')) {
+        throw Exception('Invalid QR code format');
       }
 
-      final String contactName = qrData['name'] ?? 'Unknown';
-      final String contactPhone = qrData['phone'] ?? '';
+      final String contactPhone = qrData['phone'];
+      final String contactName = qrData['name'];
+      final String? contactBio = qrData['bio'];
 
-      if (contactPhone.isEmpty) {
-        _showError('Invalid contact information');
-        return;
-      }
-
-      // Check if user is trying to add themselves
+      // Get current user
       final String? currentUserPhone = await _sessionService.getCurrentUser();
-      if (currentUserPhone == contactPhone) {
-        _showError('You cannot add yourself as a contact');
+      if (currentUserPhone == null) {
+        throw Exception('No current user session');
+      }
+
+      // Check if trying to add self
+      if (contactPhone == currentUserPhone) {
+        _showErrorDialog('Invalid Contact', 'You cannot add yourself as a contact.');
         return;
+      }
+
+      final currentUser = await _databaseService.getUserByPhone(currentUserPhone);
+      if (currentUser == null) {
+        throw Exception('Current user not found');
       }
 
       // Check if contact already exists
-      final existingSession = await _databaseService.getChatSessionByPhone(
+      final existingContact = await _databaseService.getContactByPhone(
+        currentUser.id!,
         contactPhone,
       );
-      if (existingSession != null) {
-        _showError('Contact already exists in your chat list');
+
+      if (existingContact != null) {
+        _showErrorDialog('Contact Exists', 'This contact is already in your list.');
         return;
       }
 
-      // Create new chat session
-      await _databaseService.createChatSession(
-        contactName: contactName,
+      // Add contact to database
+      await _databaseService.addContact(
+        userId: currentUser.id!,
         contactPhone: contactPhone,
-        contactAvatar:
-            'https://api.dicebear.com/7.x/avataaars/png?seed=$contactName&backgroundColor=1e3a5f',
+        contactName: contactName,
+        contactBio: contactBio,
       );
 
-      // Show success message
+      // Create chat session
+      await _databaseService.createChatSessionForUser(
+        userId: currentUser.id!,
+        contactName: contactName,
+        contactPhone: contactPhone,
+      );
+
       _showSuccessDialog(contactName);
     } catch (e) {
-      _showError('Failed to add contact: ${e.toString()}');
+      _showErrorDialog('Error', 'Failed to add contact: $e');
     }
   }
 
   void _showSuccessDialog(String contactName) {
     showDialog(
       context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF2A4A6B),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.green, size: 28),
-              SizedBox(width: 12),
-              Text(
-                'Contact Added!',
-                style: TextStyle(color: Colors.white, fontSize: 18),
-              ),
-            ],
-          ),
-          content: Text(
-            '$contactName has been added to your contacts. You can now start chatting!',
-            style: const TextStyle(color: Colors.white70),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(); // Close dialog
-                Navigator.of(context).pop(); // Go back to home
-              },
-              child: const Text(
-                'Go to Chats',
-                style: TextStyle(color: Color(0xFF00A8FF)),
-              ),
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A4A6B),
+        title: const Text(
+          'Contact Added!',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Text(
+          '$contactName has been added to your contacts and chat list.',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pop(); // Go back to home
+            },
+            child: const Text(
+              'OK',
+              style: TextStyle(color: Color(0xFF00A8FF)),
             ),
-          ],
-        );
-      },
+          ),
+        ],
+      ),
     );
   }
 
-  void _showError(String message) {
-    setState(() {
-      _hasScanned = false;
-      result = null;
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 3),
+  void _showErrorDialog(String title, String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A4A6B),
+        title: Text(
+          title,
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: Text(
+          message,
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              setState(() {
+                _hasScanned = false;
+              });
+            },
+            child: const Text(
+              'OK',
+              style: TextStyle(color: Color(0xFF00A8FF)),
+            ),
+          ),
+        ],
       ),
     );
   }

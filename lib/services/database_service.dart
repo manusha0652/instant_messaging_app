@@ -19,11 +19,16 @@ class DatabaseService {
   Future<Database> _initDatabase() async {
     String path = join(await getDatabasesPath(), 'chatlink.db');
 
-    return await openDatabase(path, version: 1, onCreate: _createTables);
+    return await openDatabase(
+      path,
+      version: 3, // Increment to version 3 to force migration
+      onCreate: _createTables,
+      onUpgrade: _upgradeDatabase,
+    );
   }
 
   Future<void> _createTables(Database db, int version) async {
-    // Users table
+    // Users table with phone column included
     await db.execute('''
       CREATE TABLE users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,7 +37,26 @@ class DatabaseService {
         bio TEXT,
         profilePicture TEXT,
         pinHash TEXT,
+        socketId TEXT,
+        isOnline INTEGER DEFAULT 0,
+        lastSeen INTEGER,
         createdAt INTEGER NOT NULL
+      )
+    ''');
+
+    // Contacts table for QR code connections
+    await db.execute('''
+      CREATE TABLE contacts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userId INTEGER NOT NULL,
+        contactPhone TEXT NOT NULL,
+        contactName TEXT NOT NULL,
+        contactBio TEXT,
+        contactAvatar TEXT,
+        addedAt INTEGER NOT NULL,
+        isBlocked INTEGER DEFAULT 0,
+        FOREIGN KEY (userId) REFERENCES users (id),
+        UNIQUE(userId, contactPhone)
       )
     ''');
 
@@ -40,17 +64,19 @@ class DatabaseService {
     await db.execute('''
       CREATE TABLE chat_sessions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        contactName TEXT NOT NULL,
+        userId INTEGER NOT NULL,
         contactPhone TEXT NOT NULL,
+        contactName TEXT NOT NULL,
         contactAvatar TEXT,
         lastMessage TEXT,
         lastMessageTime INTEGER,
         unreadCount INTEGER DEFAULT 0,
-        isActive INTEGER DEFAULT 1
+        isActive INTEGER DEFAULT 1,
+        FOREIGN KEY (userId) REFERENCES users (id)
       )
     ''');
 
-    // Messages table
+    // Messages table with enhanced features
     await db.execute('''
       CREATE TABLE messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,6 +86,8 @@ class DatabaseService {
         timestamp INTEGER NOT NULL,
         messageType TEXT DEFAULT 'text',
         isRead INTEGER DEFAULT 0,
+        isDelivered INTEGER DEFAULT 0,
+        isSent INTEGER DEFAULT 1,
         FOREIGN KEY (sessionId) REFERENCES chat_sessions (id)
       )
     ''');
@@ -68,11 +96,71 @@ class DatabaseService {
     await db.execute('''
       CREATE TABLE settings (
         id INTEGER PRIMARY KEY,
+        userId INTEGER,
         notificationsEnabled INTEGER DEFAULT 1,
         darkModeEnabled INTEGER DEFAULT 1,
-        biometricEnabled INTEGER DEFAULT 0
+        biometricEnabled INTEGER DEFAULT 0,
+        FOREIGN KEY (userId) REFERENCES users (id)
       )
     ''');
+  }
+
+  Future<void> _upgradeDatabase(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Add new columns to users table
+      try {
+        await db.execute('ALTER TABLE users ADD COLUMN socketId TEXT');
+        await db.execute('ALTER TABLE users ADD COLUMN isOnline INTEGER DEFAULT 0');
+        await db.execute('ALTER TABLE users ADD COLUMN lastSeen INTEGER');
+      } catch (e) {
+        print('Error adding columns to users table (might already exist): $e');
+      }
+
+      // Create contacts table if it doesn't exist
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS contacts (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          userId INTEGER NOT NULL,
+          contactPhone TEXT NOT NULL,
+          contactName TEXT NOT NULL,
+          contactBio TEXT,
+          contactAvatar TEXT,
+          addedAt INTEGER NOT NULL,
+          isBlocked INTEGER DEFAULT 0,
+          FOREIGN KEY (userId) REFERENCES users (id),
+          UNIQUE(userId, contactPhone)
+        )
+      ''');
+
+      // Add userId column to chat_sessions table if it doesn't exist
+      try {
+        await db.execute('ALTER TABLE chat_sessions ADD COLUMN userId INTEGER');
+      } catch (e) {
+        print('Error adding userId to chat_sessions (might already exist): $e');
+      }
+
+      // Create updated messages table with new columns if they don't exist
+      try {
+        await db.execute('ALTER TABLE messages ADD COLUMN isDelivered INTEGER DEFAULT 0');
+        await db.execute('ALTER TABLE messages ADD COLUMN isSent INTEGER DEFAULT 1');
+      } catch (e) {
+        print('Error adding columns to messages table (might already exist): $e');
+      }
+
+      // Create settings table if it doesn't exist
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS settings (
+          id INTEGER PRIMARY KEY,
+          userId INTEGER,
+          notificationsEnabled INTEGER DEFAULT 1,
+          darkModeEnabled INTEGER DEFAULT 1,
+          biometricEnabled INTEGER DEFAULT 0,
+          FOREIGN KEY (userId) REFERENCES users (id)
+        )
+      ''');
+
+      print('Database upgraded from version $oldVersion to $newVersion');
+    }
   }
 
   // User operations
@@ -196,6 +284,8 @@ class DatabaseService {
       'timestamp': DateTime.now().millisecondsSinceEpoch,
       'messageType': messageType,
       'isRead': isFromMe ? 1 : 0,
+      'isDelivered': 0,
+      'isSent': 1,
     });
 
     // Update chat session with last message
@@ -215,6 +305,104 @@ class DatabaseService {
       whereArgs: [sessionId],
       orderBy: 'timestamp ASC',
     );
+  }
+
+  Future<int> markMessagesAsRead(int sessionId) async {
+    final db = await database;
+    return await db.update(
+      'messages',
+      {'isRead': 1},
+      where: 'sessionId = ? AND isFromMe = 0 AND isRead = 0',
+      whereArgs: [sessionId],
+    );
+  }
+
+  // Contact operations for QR code connections
+  Future<int> addContact({
+    required int userId,
+    required String contactPhone,
+    required String contactName,
+    String? contactBio,
+    String? contactAvatar,
+  }) async {
+    final db = await database;
+    return await db.insert('contacts', {
+      'userId': userId,
+      'contactPhone': contactPhone,
+      'contactName': contactName,
+      'contactBio': contactBio,
+      'contactAvatar': contactAvatar,
+      'addedAt': DateTime.now().millisecondsSinceEpoch,
+      'isBlocked': 0,
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getUserContacts(int userId) async {
+    final db = await database;
+    return await db.query(
+      'contacts',
+      where: 'userId = ? AND isBlocked = 0',
+      whereArgs: [userId],
+      orderBy: 'contactName ASC',
+    );
+  }
+
+  Future<Map<String, dynamic>?> getContactByPhone(int userId, String phone) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'contacts',
+      where: 'userId = ? AND contactPhone = ?',
+      whereArgs: [userId, phone],
+    );
+
+    if (maps.isNotEmpty) {
+      return maps.first;
+    }
+    return null;
+  }
+
+  // Chat session operations with userId
+  Future<int> createChatSessionForUser({
+    required int userId,
+    required String contactName,
+    required String contactPhone,
+    String? contactAvatar,
+  }) async {
+    final db = await database;
+    return await db.insert('chat_sessions', {
+      'userId': userId,
+      'contactName': contactName,
+      'contactPhone': contactPhone,
+      'contactAvatar': contactAvatar,
+      'lastMessage': 'Tap to start chatting',
+      'lastMessageTime': DateTime.now().millisecondsSinceEpoch,
+      'unreadCount': 0,
+      'isActive': 1,
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getUserChatSessions(int userId) async {
+    final db = await database;
+    return await db.query(
+      'chat_sessions',
+      where: 'userId = ? AND isActive = ?',
+      whereArgs: [userId, 1],
+      orderBy: 'lastMessageTime DESC',
+    );
+  }
+
+  Future<Map<String, dynamic>?> getChatSessionByUserAndPhone(int userId, String phone) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'chat_sessions',
+      where: 'userId = ? AND contactPhone = ?',
+      whereArgs: [userId, phone],
+    );
+
+    if (maps.isNotEmpty) {
+      return maps.first;
+    }
+    return null;
   }
 
   // Settings operations

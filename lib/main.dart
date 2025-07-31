@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'screens/splash_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/first_time_setup_screen.dart';
+import 'screens/profile_setup_screen.dart';
 import 'screens/fingerprint_authentication.dart';
 import 'screens/home_screen.dart' as home;
 import 'services/database_service.dart';
