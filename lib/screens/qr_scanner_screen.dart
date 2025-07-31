@@ -203,44 +203,40 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
         MobileScanner(
           controller: cameraController!,
           onDetect: _onQRViewCreated,
-          errorBuilder: (context, error, child) {
-            return Container(
-              color: Colors.black,
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.error, color: Colors.red, size: 64),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Camera Error: \\${error.errorCode}',
-                      style: const TextStyle(color: Colors.white),
-                      textAlign: TextAlign.center,
+          errorBuilder: (context, error, child) => Container(
+            color: Colors.black,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error, color: Colors.red, size: 64),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Camera Error: ${error.errorCode}',
+                    style: const TextStyle(color: Colors.white),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00A8FF),
                     ),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF00A8FF),
-                      ),
-                      child: const Text(
-                        'Go Back',
-                        style: TextStyle(color: Colors.white),
-                      ),
+                    child: const Text(
+                      'Go Back',
+                      style: TextStyle(color: Colors.white),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            );
-          },
-          placeholderBuilder: (context, child) {
-            return Container(
-              color: Colors.black,
-              child: const Center(
-                child: CircularProgressIndicator(color: Color(0xFF00A8FF)),
-              ),
-            );
-          },
+            ),
+          ),
+          placeholderBuilder: (context, child) => Container(
+            color: Colors.black,
+            child: const Center(
+              child: CircularProgressIndicator(color: Color(0xFF00A8FF)),
+            ),
+          ),
         ),
         // Custom overlay
         Container(
