@@ -26,6 +26,11 @@ dependencies:
   flutter_secure_storage: ^9.0.0
   crypto: ^3.0.3
   
+  # Real-time messaging
+  socket_io_client: ^2.0.3
+  web_socket_channel: ^2.4.0
+  uuid: ^4.0.0
+
   # UI & Utils
   image_picker: ^1.0.4
   permission_handler: ^11.0.1

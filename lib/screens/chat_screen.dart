@@ -4,6 +4,8 @@ import '../models/message.dart';
 import '../models/chat_session.dart';
 import '../services/database_service.dart';
 import '../services/user_session_service.dart';
+import '../services/real_time_messaging_service.dart';
+import 'dart:async';
 
 class ChatScreen extends StatefulWidget {
   final ChatSession chatSession;
@@ -22,16 +24,62 @@ class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final DatabaseService _databaseService = DatabaseService();
   final UserSessionService _sessionService = UserSessionService();
+  final RealTimeMessagingService _messagingService = RealTimeMessagingService();
 
   List<Message> _messages = [];
   bool _isLoading = true;
   bool _isSending = false;
+  bool _isContactTyping = false;
+  bool _isContactOnline = false;
+  StreamSubscription<Message>? _messageSubscription;
+  StreamSubscription<Map<String, dynamic>>? _typingSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadMessages();
     _markMessagesAsRead();
+    _initializeRealTimeMessaging();
+  }
+
+  /// Initialize real-time messaging
+  Future<void> _initializeRealTimeMessaging() async {
+    try {
+      // Initialize the real-time messaging service
+      final initialized = await _messagingService.initialize();
+      
+      if (initialized) {
+        print('Real-time messaging initialized successfully');
+        
+        // Join chat room for this contact
+        _messagingService.joinChatRoom(widget.chatSession.contactPhone);
+        
+        // Subscribe to real-time updates
+        _subscribeToRealTimeUpdates();
+        
+        // Check contact's online status
+        _checkContactStatus();
+      } else {
+        print('Failed to initialize real-time messaging');
+        // Fall back to offline mode
+      }
+    } catch (e) {
+      print('Error initializing real-time messaging: $e');
+    }
+  }
+
+  /// Check contact's online status
+  Future<void> _checkContactStatus() async {
+    try {
+      final isOnline = await _messagingService.isContactOnline(widget.chatSession.contactPhone);
+      final lastSeen = await _messagingService.getContactLastSeen(widget.chatSession.contactPhone);
+      
+      setState(() {
+        _isContactOnline = isOnline;
+      });
+    } catch (e) {
+      print('Error checking contact status: $e');
+    }
   }
 
   Future<void> _loadMessages() async {
@@ -185,6 +233,35 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  void _subscribeToRealTimeUpdates() {
+    _messageSubscription = _messagingService.messageStream.listen((message) {
+      // Handle incoming message
+      _handleIncomingMessage(message);
+    });
+
+    _typingSubscription = _messagingService.typingStatusStream.listen((status) {
+      // Handle typing status - status is a Map<String, dynamic>
+      final contactPhone = status['phone'] as String?;
+      final isTyping = status['isTyping'] as bool?;
+
+      if (contactPhone == widget.chatSession.contactPhone) {
+        setState(() {
+          _isContactTyping = isTyping ?? false;
+        });
+      }
+    });
+  }
+
+  void _handleIncomingMessage(Message message) {
+    // Add the new message to the list and update the UI
+    setState(() {
+      _messages.add(message);
+    });
+
+    // Scroll to the bottom to show the new message
+    _scrollToBottom();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -332,7 +409,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
 
           // Typing Indicator (placeholder for real implementation)
-          // _buildTypingIndicator(),
+          if (_isContactTyping) _buildTypingIndicator(),
 
           // Message Input
           _buildMessageInput(),
@@ -628,10 +705,61 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget _buildTypingIndicator() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          // Contact avatar
+          Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFF00A8FF).withOpacity(0.7),
+            ),
+            child: const Icon(
+              Icons.person,
+              color: Colors.white,
+              size: 16,
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Typing indicator dots
+          Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.start,
+              children: [
+                _buildDot(),
+                const SizedBox(width: 4),
+                _buildDot(),
+                const SizedBox(width: 4),
+                _buildDot(),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDot() {
+    return Container(
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.white,
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
+    _messageSubscription?.cancel();
+    _typingSubscription?.cancel();
     super.dispose();
   }
 }

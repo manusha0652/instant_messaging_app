@@ -409,38 +409,56 @@ class DatabaseService {
   }
 
   // Settings operations
-  Future<Map<String, dynamic>> getSettings() async {
+  Future<void> saveUserSettings({
+    required int userId,
+    bool notificationsEnabled = true,
+    bool darkModeEnabled = true,
+    bool biometricEnabled = false,
+  }) async {
+    final db = await database;
+    await db.insert(
+      'settings',
+      {
+        'userId': userId,
+        'notificationsEnabled': notificationsEnabled ? 1 : 0,
+        'darkModeEnabled': darkModeEnabled ? 1 : 0,
+        'biometricEnabled': biometricEnabled ? 1 : 0,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<Map<String, dynamic>?> getUserSettings(int userId) async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
       'settings',
-      limit: 1,
+      where: 'userId = ?',
+      whereArgs: [userId],
     );
 
     if (maps.isNotEmpty) {
       return maps.first;
-    } else {
-      // Create default settings
-      await db.insert('settings', {
-        'id': 1,
-        'notificationsEnabled': 1,
-        'darkModeEnabled': 1,
-        'biometricEnabled': 0,
-      });
-      return {
-        'notificationsEnabled': 1,
-        'darkModeEnabled': 1,
-        'biometricEnabled': 0,
-      };
     }
+    return null;
   }
 
-  Future<int> updateSettings(Map<String, dynamic> settings) async {
-    final db = await database;
-    return await db.update(
-      'settings',
-      settings,
-      where: 'id = ?',
-      whereArgs: [1],
+  // Legacy method name for compatibility
+  Future<Map<String, dynamic>?> getSettings(int userId) async {
+    return await getUserSettings(userId);
+  }
+
+  // Legacy method name for compatibility
+  Future<void> updateSettings({
+    required int userId,
+    bool? notificationsEnabled,
+    bool? darkModeEnabled,
+    bool? biometricEnabled,
+  }) async {
+    await saveUserSettings(
+      userId: userId,
+      notificationsEnabled: notificationsEnabled ?? true,
+      darkModeEnabled: darkModeEnabled ?? true,
+      biometricEnabled: biometricEnabled ?? false,
     );
   }
 }

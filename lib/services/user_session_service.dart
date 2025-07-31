@@ -49,34 +49,28 @@ class UserSessionService {
     return sessionDuration < maxSessionDuration;
   }
 
-  // Logout user and clear session
+  // Clear user session (logout)
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('current_user');
     await prefs.remove('login_timestamp');
-    // Keep last_authenticated_user for quick access if needed
   }
 
-  // Clear current session (alias for logout for compatibility)
+  // Clear all session data
   Future<void> clearSession() async {
-    await logout();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
   }
 
-  // Check if user has logged in before
+  // Check if user has ever logged in before
   Future<bool> hasLoggedInBefore() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('last_authenticated_user') != null;
   }
 
-  // Enable/disable biometric for user
+  // Enable/disable biometric authentication
   Future<void> setBiometricEnabled(String phoneNumber, bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('biometric_enabled_$phoneNumber', enabled);
-  }
-
-  // Clear all user data (for complete logout)
-  Future<void> clearAllUserData() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
   }
 }

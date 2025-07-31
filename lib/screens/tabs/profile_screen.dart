@@ -61,10 +61,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadDarkModeSetting() async {
     try {
-      final settings = await _databaseService.getSettings();
+      // Get current user first
+      final currentUserPhone = await _sessionService.getCurrentUser();
+      if (currentUserPhone == null) return;
+
+      final currentUser = await _databaseService.getUserByPhone(currentUserPhone);
+      if (currentUser == null) return;
+
+      final settings = await _databaseService.getSettings(currentUser.id!);
       setState(() {
-        _settings = settings;
-        _isDarkMode = settings['darkModeEnabled'] == 1;
+        _settings = settings ?? {};
+        _isDarkMode = settings?['darkModeEnabled'] == 1;
       });
     } catch (e) {
       print('Error loading settings: $e');
@@ -132,7 +139,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _toggleDarkMode(bool value) async {
     try {
-      await _databaseService.updateSettings({'darkModeEnabled': value ? 1 : 0});
+      // Get current user first
+      final currentUserPhone = await _sessionService.getCurrentUser();
+      if (currentUserPhone == null) return;
+
+      final currentUser = await _databaseService.getUserByPhone(currentUserPhone);
+      if (currentUser == null) return;
+
+      await _databaseService.updateSettings(
+        userId: currentUser.id!,
+        darkModeEnabled: value,
+      );
       setState(() {
         _isDarkMode = value;
         _settings['darkModeEnabled'] = value ? 1 : 0;

@@ -300,12 +300,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
             onPressed: () {
               // Process the scanned result directly
               if (result != null) {
-                try {
-                  final qrData = jsonDecode(result!);
-                  _handleQRCodeData(qrData);
-                } catch (e) {
-                  _showErrorDialog('Invalid QR Code', 'This QR code is not from ChatLink app.');
-                }
+                _handleScanResult(result!);
               }
             },
             style: ElevatedButton.styleFrom(
@@ -358,55 +353,54 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
     );
   }
 
-  void _onDetect(BarcodeCapture capture) async {
+  void _onDetect(BarcodeCapture capture) {
     if (_hasScanned) return;
 
     final List<Barcode> barcodes = capture.barcodes;
-    if (barcodes.isEmpty) return;
-
-    final barcode = barcodes.first;
-    if (barcode.rawValue == null) return;
-
-    setState(() {
-      _hasScanned = true;
-      result = barcode.rawValue!;
-    });
-
-    // Parse QR code data
-    try {
-      final qrData = jsonDecode(result!);
-      await _handleQRCodeData(qrData);
-    } catch (e) {
-      _showErrorDialog('Invalid QR Code', 'This QR code is not from ChatLink app.');
+    if (barcodes.isNotEmpty) {
+      final barcode = barcodes.first;
+      if (barcode.rawValue != null) {
+        setState(() {
+          result = barcode.rawValue;
+          _hasScanned = true;
+        });
+        _handleScanResult(barcode.rawValue!);
+      }
     }
   }
 
-  Future<void> _handleQRCodeData(Map<String, dynamic> qrData) async {
+  Future<void> _handleScanResult(String scanResult) async {
     try {
-      // Validate QR code format
-      if (!qrData.containsKey('phone') || !qrData.containsKey('name')) {
-        throw Exception('Invalid QR code format');
+      // Parse the QR code data
+      final data = json.decode(scanResult);
+
+      // Validate required fields
+      if (!data.containsKey('phone') || !data.containsKey('name')) {
+        _showErrorDialog('Invalid QR code format');
+        return;
       }
 
-      final String contactPhone = qrData['phone'];
-      final String contactName = qrData['name'];
-      final String? contactBio = qrData['bio'];
+      final contactPhone = data['phone'] as String;
+      final contactName = data['name'] as String;
+      final contactBio = data['bio'] as String?;
 
       // Get current user
-      final String? currentUserPhone = await _sessionService.getCurrentUser();
+      final currentUserPhone = await _sessionService.getCurrentUser();
       if (currentUserPhone == null) {
-        throw Exception('No current user session');
-      }
-
-      // Check if trying to add self
-      if (contactPhone == currentUserPhone) {
-        _showErrorDialog('Invalid Contact', 'You cannot add yourself as a contact.');
+        _showErrorDialog('User not logged in');
         return;
       }
 
       final currentUser = await _databaseService.getUserByPhone(currentUserPhone);
       if (currentUser == null) {
-        throw Exception('Current user not found');
+        _showErrorDialog('Current user not found');
+        return;
+      }
+
+      // Check if trying to add self
+      if (contactPhone == currentUserPhone) {
+        _showErrorDialog('You cannot add yourself as a contact');
+        return;
       }
 
       // Check if contact already exists
@@ -416,11 +410,11 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
       );
 
       if (existingContact != null) {
-        _showErrorDialog('Contact Exists', 'This contact is already in your list.');
+        _showErrorDialog('Contact already exists');
         return;
       }
 
-      // Add contact to database
+      // Add contact
       await _databaseService.addContact(
         userId: currentUser.id!,
         contactPhone: contactPhone,
@@ -435,49 +429,22 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
         contactPhone: contactPhone,
       );
 
+      // Show success and navigate back
       _showSuccessDialog(contactName);
     } catch (e) {
-      _showErrorDialog('Error', 'Failed to add contact: $e');
+      print('Error handling scan result: $e');
+      _showErrorDialog('Failed to process QR code: $e');
     }
   }
 
-  void _showSuccessDialog(String contactName) {
+  void _showErrorDialog(String message) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF2A4A6B),
         title: const Text(
-          'Contact Added!',
+          'Error',
           style: TextStyle(color: Colors.white),
-        ),
-        content: Text(
-          '$contactName has been added to your contacts and chat list.',
-          style: const TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pop(); // Go back to home
-            },
-            child: const Text(
-              'OK',
-              style: TextStyle(color: Color(0xFF00A8FF)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showErrorDialog(String title, String message) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF2A4A6B),
-        title: Text(
-          title,
-          style: const TextStyle(color: Colors.white),
         ),
         content: Text(
           message,
@@ -489,10 +456,40 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
               Navigator.of(context).pop();
               setState(() {
                 _hasScanned = false;
+                result = null;
               });
             },
             child: const Text(
-              'OK',
+              'Try Again',
+              style: TextStyle(color: Color(0xFF00A8FF)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSuccessDialog(String contactName) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A4A6B),
+        title: const Text(
+          'Success!',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Text(
+          'Contact "$contactName" has been added successfully!',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pop(); // Go back to home
+            },
+            child: const Text(
+              'Done',
               style: TextStyle(color: Color(0xFF00A8FF)),
             ),
           ),
