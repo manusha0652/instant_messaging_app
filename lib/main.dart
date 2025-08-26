@@ -48,6 +48,10 @@ class _AppInitializerState extends State<AppInitializer> {
 
   Future<void> _initializeApp() async {
     try {
+
+      final db = await _databaseService.database;
+      final users = await db.query('users');
+      print('Users table: $users');
       // Initialize database
       await _databaseService.database;
 

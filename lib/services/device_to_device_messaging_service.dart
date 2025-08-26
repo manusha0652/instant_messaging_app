@@ -2,16 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../models/message.dart';
-import '../models/user.dart';
 import '../services/database_service.dart';
 import '../services/user_session_service.dart';
 
-class LocalMessagingService {
-  static final LocalMessagingService _instance = LocalMessagingService._internal();
-  factory LocalMessagingService() => _instance;
-  LocalMessagingService._internal();
+class DeviceToDeviceMessagingService {
+  static final DeviceToDeviceMessagingService _instance = DeviceToDeviceMessagingService._internal();
+  factory DeviceToDeviceMessagingService() => _instance;
+  DeviceToDeviceMessagingService._internal();
 
   final DatabaseService _databaseService = DatabaseService();
   final UserSessionService _sessionService = UserSessionService();
@@ -29,10 +28,10 @@ class LocalMessagingService {
   // File watcher for real-time updates
   Timer? _messageWatcher;
   String? _currentUserPhone;
-  String? _messagesDirectory;
+  String? _sharedMessagesDirectory;
   Map<String, int> _lastMessageCounts = {};
 
-  /// Initialize local messaging service
+  /// Initialize device-to-device messaging service
   Future<bool> initialize() async {
     try {
       // Get current user
@@ -42,22 +41,112 @@ class LocalMessagingService {
         return false;
       }
 
-      // Create messages directory
-      final appDir = await getApplicationDocumentsDirectory();
-      _messagesDirectory = '${appDir.path}/local_messages';
-      final dir = Directory(_messagesDirectory!);
-      if (!dir.existsSync()) {
-        dir.createSync(recursive: true);
-      }
+      // Use external storage for device-to-device sharing
+      await _setupSharedStorage();
 
       // Start watching for new messages
       _startMessageWatcher();
 
-      print('Local messaging service initialized successfully');
+      print('Device-to-device messaging service initialized successfully');
       return true;
     } catch (e) {
-      print('Failed to initialize local messaging service: $e');
+      print('Failed to initialize device-to-device messaging service: $e');
       return false;
+    }
+  }
+
+  /// Request storage permissions for the app
+  Future<bool> _requestStoragePermissions() async {
+    try {
+      if (Platform.isAndroid) {
+        // For Android 13+ (API 33+), request specific media permissions
+        var status = await Permission.storage.status;
+        if (!status.isGranted) {
+          status = await Permission.storage.request();
+        }
+
+        // Also request manage external storage for Android 11+
+        var manageStatus = await Permission.manageExternalStorage.status;
+        if (!manageStatus.isGranted) {
+          manageStatus = await Permission.manageExternalStorage.request();
+        }
+
+        if (status.isGranted || manageStatus.isGranted) {
+          print('Storage permissions granted');
+          return true;
+        } else {
+          print('Storage permissions denied');
+          return false;
+        }
+      }
+      return true; // For non-Android platforms
+    } catch (e) {
+      print('Error requesting storage permissions: $e');
+      return false;
+    }
+  }
+
+  /// Setup shared storage directory that other devices can access
+  Future<void> _setupSharedStorage() async {
+    try {
+      // Request storage permissions first
+      final hasPermissions = await _requestStoragePermissions();
+
+      if (Platform.isAndroid && hasPermissions) {
+        // Use public Downloads folder for better cross-device access
+        try {
+          final downloadsDir = Directory('/storage/emulated/0/Download/ChatLink');
+          if (!downloadsDir.existsSync()) {
+            downloadsDir.createSync(recursive: true);
+          }
+
+          // Test write access
+          final testFile = File('${downloadsDir.path}/test.txt');
+          await testFile.writeAsString('test');
+          await testFile.delete();
+
+          _sharedMessagesDirectory = downloadsDir.path;
+          print('Using Downloads directory: $_sharedMessagesDirectory');
+          return;
+        } catch (e) {
+          print('Cannot access Downloads directory: $e, falling back...');
+        }
+      }
+
+      // Fallback: Use app's external storage directory
+      try {
+        final appDir = await getExternalStorageDirectory();
+        if (appDir != null) {
+          _sharedMessagesDirectory = '${appDir.path}/shared_messages';
+          final dir = Directory(_sharedMessagesDirectory!);
+          if (!dir.existsSync()) {
+            dir.createSync(recursive: true);
+          }
+          print('Using external app directory: $_sharedMessagesDirectory');
+          return;
+        }
+      } catch (e) {
+        print('Cannot access external storage: $e');
+      }
+
+      // Final fallback: Use internal app directory
+      final appDir = await getApplicationDocumentsDirectory();
+      _sharedMessagesDirectory = '${appDir.path}/local_messages';
+      final dir = Directory(_sharedMessagesDirectory!);
+      if (!dir.existsSync()) {
+        dir.createSync(recursive: true);
+      }
+      print('Using internal app directory: $_sharedMessagesDirectory');
+
+    } catch (e) {
+      print('Error setting up shared storage: $e');
+      // Emergency fallback
+      final appDir = await getApplicationDocumentsDirectory();
+      _sharedMessagesDirectory = '${appDir.path}/emergency_messages';
+      final dir = Directory(_sharedMessagesDirectory!);
+      if (!dir.existsSync()) {
+        dir.createSync(recursive: true);
+      }
     }
   }
 
@@ -68,7 +157,7 @@ class LocalMessagingService {
     String messageType = 'text',
   }) async {
     try {
-      if (_currentUserPhone == null || _messagesDirectory == null) {
+      if (_currentUserPhone == null || _sharedMessagesDirectory == null) {
         throw Exception('Service not initialized');
       }
 
@@ -98,14 +187,14 @@ class LocalMessagingService {
 
       if (chatSession != null) {
         await _databaseService.insertMessage(
-          sessionId: chatSession['id'],
+          sessionId: chatSession.id!,
           content: content,
           isFromMe: true,
           messageType: messageType,
         );
       }
 
-      // Create message data for file sharing
+      // Create message data for device sharing
       final messageData = {
         'id': DateTime.now().millisecondsSinceEpoch.toString(),
         'from': _currentUserPhone,
@@ -117,13 +206,13 @@ class LocalMessagingService {
         'isRead': false,
       };
 
-      // Save message to shared file for the contact
-      await _saveMessageToFile(contactPhone, messageData);
+      // Save message to shared file for the contact's device
+      await _saveMessageToSharedFile(contactPhone, messageData);
 
       // Emit message to local stream
       _messageStreamController.add(message);
 
-      print('Message sent successfully to $contactPhone');
+      print('Message sent successfully to $contactPhone via shared storage');
       return true;
     } catch (e) {
       print('Error sending message: $e');
@@ -131,10 +220,11 @@ class LocalMessagingService {
     }
   }
 
-  /// Save message to file for contact to read
-  Future<void> _saveMessageToFile(String contactPhone, Map<String, dynamic> messageData) async {
+  /// Save message to shared file that other devices can access
+  Future<void> _saveMessageToSharedFile(String contactPhone, Map<String, dynamic> messageData) async {
     try {
-      final fileName = '${_messagesDirectory}/messages_for_$contactPhone.json';
+      // Create a shared file that both devices can access
+      final fileName = '${_sharedMessagesDirectory}/messages_for_$contactPhone.json';
       final file = File(fileName);
 
       List<Map<String, dynamic>> messages = [];
@@ -151,14 +241,25 @@ class LocalMessagingService {
       // Add new message
       messages.add(messageData);
 
-      // Write back to file
+      // Write back to file with proper permissions
       await file.writeAsString(jsonEncode(messages));
+      
+      // Make file readable by other apps (Android)
+      if (Platform.isAndroid) {
+        try {
+          await Process.run('chmod', ['666', fileName]);
+        } catch (e) {
+          print('Could not change file permissions: $e');
+        }
+      }
+
+      print('Message saved to shared file: $fileName');
     } catch (e) {
-      print('Error saving message to file: $e');
+      print('Error saving message to shared file: $e');
     }
   }
 
-  /// Start watching for new messages
+  /// Start watching for new messages from other devices
   void _startMessageWatcher() {
     _messageWatcher?.cancel();
     _messageWatcher = Timer.periodic(const Duration(seconds: 2), (_) {
@@ -166,12 +267,12 @@ class LocalMessagingService {
     });
   }
 
-  /// Check for new messages from contacts
+  /// Check for new messages from contacts' devices
   Future<void> _checkForNewMessages() async {
     try {
-      if (_currentUserPhone == null || _messagesDirectory == null) return;
+      if (_currentUserPhone == null || _sharedMessagesDirectory == null) return;
 
-      final fileName = '${_messagesDirectory}/messages_for_$_currentUserPhone.json';
+      final fileName = '${_sharedMessagesDirectory}/messages_for_$_currentUserPhone.json';
       final file = File(fileName);
 
       if (!file.existsSync()) return;
@@ -198,7 +299,7 @@ class LocalMessagingService {
     }
   }
 
-  /// Handle incoming message
+  /// Handle incoming message from another device
   Future<void> _handleIncomingMessage(dynamic data) async {
     try {
       final messageData = Map<String, dynamic>.from(data);
@@ -216,19 +317,21 @@ class LocalMessagingService {
         messageData['from'],
       );
 
+      int sessionId;
       // Create chat session if doesn't exist
       if (chatSession == null) {
-        final sessionId = await _databaseService.createChatSessionForUser(
+        sessionId = await _databaseService.createChatSessionForUser(
           userId: currentUser.id!,
           contactName: messageData['fromName'] ?? 'Unknown',
           contactPhone: messageData['from'],
         );
-        chatSession = {'id': sessionId};
+      } else {
+        sessionId = chatSession.id!;
       }
 
       // Save message to database
       await _databaseService.insertMessage(
-        sessionId: chatSession['id'],
+        sessionId: sessionId,
         content: messageData['content'],
         isFromMe: false,
         messageType: messageData['messageType'] ?? 'text',
@@ -236,7 +339,7 @@ class LocalMessagingService {
 
       // Create message object
       final message = Message(
-        sessionId: chatSession['id'],
+        sessionId: sessionId,
         content: messageData['content'],
         isFromMe: false,
         timestamp: DateTime.fromMillisecondsSinceEpoch(messageData['timestamp']),
@@ -255,7 +358,7 @@ class LocalMessagingService {
     }
   }
 
-  /// Send typing indicator
+  /// Send typing indicator to shared storage
   Future<void> sendTypingStatus({
     required String contactPhone,
     required bool isTyping,
@@ -268,8 +371,8 @@ class LocalMessagingService {
         'timestamp': DateTime.now().millisecondsSinceEpoch,
       };
 
-      // Save typing status to file
-      final fileName = '${_messagesDirectory}/typing_$contactPhone.json';
+      // Save typing status to shared file
+      final fileName = '${_sharedMessagesDirectory}/typing_$contactPhone.json';
       final file = File(fileName);
       await file.writeAsString(jsonEncode(typingData));
 
@@ -299,7 +402,7 @@ class LocalMessagingService {
       );
 
       if (chatSession != null) {
-        await _databaseService.markMessagesAsRead(chatSession['id']);
+        await _databaseService.markMessagesAsRead(chatSession.id!);
       }
     } catch (e) {
       print('Error marking messages as read: $e');
@@ -308,8 +411,12 @@ class LocalMessagingService {
 
   /// Get contact last seen (mock implementation)
   Future<DateTime?> getContactLastSeen(String contactPhone) async {
-    // Return null since we don't track last seen in local mode
     return null;
+  }
+
+  /// Get shared storage path for debugging
+  String? getSharedStoragePath() {
+    return _sharedMessagesDirectory;
   }
 
   /// Cleanup resources

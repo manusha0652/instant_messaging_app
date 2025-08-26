@@ -414,7 +414,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
 
       // Create or get chat session
       final existingSession = await _databaseService.getChatSessionByUserAndPhone(currentUser.id!, contactPhone);
-
+      
       if (existingSession == null) {
         await _databaseService.createChatSessionForUser(
           userId: currentUser.id!,

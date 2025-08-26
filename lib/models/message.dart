@@ -8,6 +8,8 @@ class Message {
   final bool isRead;
   final bool isDelivered;
   final bool isSent;
+  final String? senderPhone; // Add sender phone for device-to-device messaging
+  final String? receiverPhone; // Add receiver phone for device-to-device messaging
 
   Message({
     this.id,
@@ -19,7 +21,13 @@ class Message {
     this.isRead = false,
     this.isDelivered = false,
     this.isSent = true,
+    this.senderPhone,
+    this.receiverPhone,
   });
+
+  // Add getter for compatibility with enhanced services
+  String? get senderId => senderPhone;
+  String? get receiverId => receiverPhone;
 
   Map<String, dynamic> toMap() {
     return {
@@ -32,6 +40,8 @@ class Message {
       'isRead': isRead ? 1 : 0,
       'isDelivered': isDelivered ? 1 : 0,
       'isSent': isSent ? 1 : 0,
+      'senderPhone': senderPhone,
+      'receiverPhone': receiverPhone,
     };
   }
 
@@ -46,6 +56,8 @@ class Message {
       isRead: map['isRead'] == 1,
       isDelivered: map['isDelivered'] == 1,
       isSent: map['isSent'] == 1,
+      senderPhone: map['senderPhone'],
+      receiverPhone: map['receiverPhone'],
     );
   }
 
@@ -59,6 +71,8 @@ class Message {
     bool? isRead,
     bool? isDelivered,
     bool? isSent,
+    String? senderPhone,
+    String? receiverPhone,
   }) {
     return Message(
       id: id ?? this.id,
@@ -70,6 +84,8 @@ class Message {
       isRead: isRead ?? this.isRead,
       isDelivered: isDelivered ?? this.isDelivered,
       isSent: isSent ?? this.isSent,
+      senderPhone: senderPhone ?? this.senderPhone,
+      receiverPhone: receiverPhone ?? this.receiverPhone,
     );
   }
 }

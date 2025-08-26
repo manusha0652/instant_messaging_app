@@ -89,7 +89,8 @@ class _ChatScreenState extends State<ChatScreen> {
       );
 
       setState(() {
-        _messages = messagesData.map((data) => Message.fromMap(data)).toList();
+        // messagesData is already a List<Message>, no need to convert
+        _messages = messagesData;
         _isLoading = false;
       });
 

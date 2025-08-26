@@ -147,8 +147,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (currentUser == null) return;
 
       await _databaseService.updateSettings(
-        userId: currentUser.id!,
-        darkModeEnabled: value,
+        currentUser.id!,
+        {'darkModeEnabled': value ? 1 : 0}
       );
       setState(() {
         _isDarkMode = value;

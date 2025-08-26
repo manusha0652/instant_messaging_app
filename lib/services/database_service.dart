@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/user.dart';
+import '../models/message.dart';
+import '../models/chat_session.dart';
 
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();
@@ -228,6 +230,23 @@ class DatabaseService {
     });
   }
 
+  Future<int> createChatSessionLegacy({
+    required String contactName,
+    required String contactPhone,
+    String? contactAvatar,
+  }) async {
+    final db = await database;
+    return await db.insert('chat_sessions', {
+      'contactName': contactName,
+      'contactPhone': contactPhone,
+      'contactAvatar': contactAvatar,
+      'lastMessage': 'Tap to start chatting',
+      'lastMessageTime': DateTime.now().millisecondsSinceEpoch,
+      'unreadCount': 0,
+      'isActive': 1,
+    });
+  }
+
   Future<Map<String, dynamic>?> getChatSessionByPhone(String phone) async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
@@ -252,7 +271,7 @@ class DatabaseService {
     );
   }
 
-  Future<int> updateChatSession(int sessionId, Map<String, dynamic> updates) async {
+  Future<int> updateChatSessionDeprecated(int sessionId, Map<String, dynamic> updates) async {
     final db = await database;
     return await db.update(
       'chat_sessions',
@@ -278,49 +297,176 @@ class DatabaseService {
     required String content,
     required bool isFromMe,
     String messageType = 'text',
+    DateTime? timestamp,
+    String? senderPhone,
+    String? receiverPhone,
   }) async {
     final db = await database;
     final messageId = await db.insert('messages', {
       'sessionId': sessionId,
       'content': content,
       'isFromMe': isFromMe ? 1 : 0,
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      'timestamp': (timestamp ?? DateTime.now()).millisecondsSinceEpoch,
       'messageType': messageType,
       'isRead': isFromMe ? 1 : 0,
       'isDelivered': 0,
       'isSent': 1,
+      'senderPhone': senderPhone,
+      'receiverPhone': receiverPhone,
     });
 
     // Update chat session with last message
-    await updateChatSession(sessionId, {
-      'lastMessage': content,
-      'lastMessageTime': DateTime.now().millisecondsSinceEpoch,
-    });
+    final chatSession = await getChatSessionById(sessionId);
+    if (chatSession != null) {
+      final updatedSession = ChatSession(
+        id: chatSession.id,
+        userId: chatSession.userId,
+        contactPhone: chatSession.contactPhone,
+        contactName: chatSession.contactName,
+        contactAvatar: chatSession.contactAvatar,
+        lastMessage: content,
+        lastMessageTime: DateTime.now(),
+        unreadCount: chatSession.unreadCount,
+        isActive: chatSession.isActive,
+      );
+      await updateChatSession(updatedSession);
+    }
 
     return messageId;
   }
 
-  Future<List<Map<String, dynamic>>> getMessagesForSession(int sessionId) async {
+  // New methods for real-time messaging service
+  Future<int> saveMessage(Message message) async {
     final db = await database;
-    return await db.query(
+    return await db.insert('messages', message.toMap());
+  }
+
+  Future<List<Message>> getMessages(int sessionId, {int limit = 50, int offset = 0}) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
       'messages',
       where: 'sessionId = ?',
       whereArgs: [sessionId],
-      orderBy: 'timestamp ASC',
+      orderBy: 'timestamp DESC',
+      limit: limit,
+      offset: offset,
     );
+
+    return maps.map((map) => Message.fromMap(map)).toList();
   }
 
-  Future<int> markMessagesAsRead(int sessionId) async {
+  Future<void> markMessagesAsRead(int sessionId) async {
     final db = await database;
-    return await db.update(
+    await db.update(
       'messages',
       {'isRead': 1},
-      where: 'sessionId = ? AND isFromMe = 0 AND isRead = 0',
+      where: 'sessionId = ? AND isFromMe = 0',
       whereArgs: [sessionId],
     );
   }
 
-  // Contact operations (for QR code connections)
+  Future<ChatSession?> getChatSessionById(int sessionId) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'chat_sessions',
+      where: 'id = ?',
+      whereArgs: [sessionId],
+    );
+
+    if (maps.isNotEmpty) {
+      return ChatSession.fromMap(maps.first);
+    }
+    return null;
+  }
+
+  Future<List<ChatSession>> getChatSessions(int userId) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'chat_sessions',
+      where: 'userId = ? AND isActive = ?',
+      whereArgs: [userId, 1],
+      orderBy: 'lastMessageTime DESC',
+    );
+
+    return maps.map((map) => ChatSession.fromMap(map)).toList();
+  }
+
+  Future<ChatSession?> getChatSessionByUserAndPhone(int userId, String contactPhone) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'chat_sessions',
+      where: 'userId = ? AND contactPhone = ?',
+      whereArgs: [userId, contactPhone],
+    );
+
+    if (maps.isNotEmpty) {
+      return ChatSession.fromMap(maps.first);
+    }
+    return null;
+  }
+
+  Future<ChatSession> createChatSessionFromModel(ChatSession chatSession) async {
+    final db = await database;
+    final id = await db.insert('chat_sessions', chatSession.toMap());
+
+    return ChatSession(
+      id: id,
+      userId: chatSession.userId,
+      contactPhone: chatSession.contactPhone,
+      contactName: chatSession.contactName,
+      contactAvatar: chatSession.contactAvatar,
+      lastMessage: chatSession.lastMessage,
+      lastMessageTime: chatSession.lastMessageTime,
+      unreadCount: chatSession.unreadCount,
+      isActive: chatSession.isActive,
+    );
+  }
+
+  Future<int> updateChatSession(ChatSession chatSession) async {
+    final db = await database;
+    return await db.update(
+      'chat_sessions',
+      chatSession.toMap(),
+      where: 'id = ?',
+      whereArgs: [chatSession.id],
+    );
+  }
+
+  // Settings operations
+  Future<Map<String, dynamic>> getSettings(int userId) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'settings',
+      where: 'userId = ?',
+      whereArgs: [userId],
+    );
+
+    if (maps.isNotEmpty) {
+      return maps.first;
+    } else {
+      // Create default settings if none exist
+      final defaultSettings = {
+        'userId': userId,
+        'notificationsEnabled': 1,
+        'darkModeEnabled': 1,
+        'biometricEnabled': 0,
+      };
+      await db.insert('settings', defaultSettings);
+      return defaultSettings;
+    }
+  }
+
+  Future<int> updateSettings(int userId, Map<String, dynamic> settings) async {
+    final db = await database;
+    return await db.update(
+      'settings',
+      settings,
+      where: 'userId = ?',
+      whereArgs: [userId],
+    );
+  }
+
+  // Contact operations for QR connections
   Future<int> addContact({
     required int userId,
     required String contactPhone,
@@ -329,18 +475,16 @@ class DatabaseService {
     String? contactAvatar,
   }) async {
     final db = await database;
-    try {
-      return await db.insert('contacts', {
-        'userId': userId,
-        'contactPhone': contactPhone,
-        'contactName': contactName,
-        'contactBio': contactBio,
-        'contactAvatar': contactAvatar,
-        'addedAt': DateTime.now().millisecondsSinceEpoch,
-        'isBlocked': 0,
-      });
-    } catch (e) {
-      // Contact already exists, update it
+
+    // Check if contact already exists
+    final existing = await db.query(
+      'contacts',
+      where: 'userId = ? AND contactPhone = ?',
+      whereArgs: [userId, contactPhone],
+    );
+
+    if (existing.isNotEmpty) {
+      // Update existing contact
       return await db.update(
         'contacts',
         {
@@ -351,20 +495,21 @@ class DatabaseService {
         where: 'userId = ? AND contactPhone = ?',
         whereArgs: [userId, contactPhone],
       );
+    } else {
+      // Insert new contact
+      return await db.insert('contacts', {
+        'userId': userId,
+        'contactPhone': contactPhone,
+        'contactName': contactName,
+        'contactBio': contactBio,
+        'contactAvatar': contactAvatar,
+        'addedAt': DateTime.now().millisecondsSinceEpoch,
+        'isBlocked': 0,
+      });
     }
   }
 
-  Future<bool> isContactExists(int userId, String contactPhone) async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-      'contacts',
-      where: 'userId = ? AND contactPhone = ?',
-      whereArgs: [userId, contactPhone],
-    );
-    return maps.isNotEmpty;
-  }
-
-  Future<List<Map<String, dynamic>>> getAllContacts(int userId) async {
+  Future<List<Map<String, dynamic>>> getContacts(int userId) async {
     final db = await database;
     return await db.query(
       'contacts',
@@ -388,24 +533,27 @@ class DatabaseService {
     return null;
   }
 
-  // Chat session operations with userId
-  Future<int> createChatSessionForUser({
-    required int userId,
-    required String contactName,
-    required String contactPhone,
-    String? contactAvatar,
-  }) async {
+  // Cleanup operations
+  Future<void> clearAllData() async {
     final db = await database;
-    return await db.insert('chat_sessions', {
-      'userId': userId,
-      'contactName': contactName,
-      'contactPhone': contactPhone,
-      'contactAvatar': contactAvatar,
-      'lastMessage': 'Tap to start chatting',
-      'lastMessageTime': DateTime.now().millisecondsSinceEpoch,
-      'unreadCount': 0,
-      'isActive': 1,
-    });
+    await db.delete('messages');
+    await db.delete('chat_sessions');
+    await db.delete('contacts');
+    await db.delete('settings');
+    await db.delete('users');
+  }
+
+  Future<void> close() async {
+    final db = _database;
+    if (db != null) {
+      await db.close();
+      _database = null;
+    }
+  }
+
+  // Additional methods needed by screens
+  Future<List<Message>> getMessagesForSession(int sessionId) async {
+    return await getMessages(sessionId);
   }
 
   Future<List<Map<String, dynamic>>> getUserChatSessions(int userId) async {
@@ -418,71 +566,27 @@ class DatabaseService {
     );
   }
 
-  Future<Map<String, dynamic>?> getChatSessionByUserAndPhone(int userId, String phone) async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-      'chat_sessions',
-      where: 'userId = ? AND contactPhone = ?',
-      whereArgs: [userId, phone],
-    );
-
-    if (maps.isNotEmpty) {
-      return maps.first;
-    }
-    return null;
+  Future<bool> isContactExists(int userId, String contactPhone) async {
+    final contact = await getContactByPhone(userId, contactPhone);
+    return contact != null;
   }
 
-  // Settings operations
-  Future<void> saveUserSettings({
+  Future<int> createChatSessionForUser({
     required int userId,
-    bool notificationsEnabled = true,
-    bool darkModeEnabled = true,
-    bool biometricEnabled = false,
+    required String contactName,
+    required String contactPhone,
+    String? contactAvatar,
   }) async {
     final db = await database;
-    await db.insert(
-      'settings',
-      {
-        'userId': userId,
-        'notificationsEnabled': notificationsEnabled ? 1 : 0,
-        'darkModeEnabled': darkModeEnabled ? 1 : 0,
-        'biometricEnabled': biometricEnabled ? 1 : 0,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-  }
-
-  Future<Map<String, dynamic>?> getUserSettings(int userId) async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-      'settings',
-      where: 'userId = ?',
-      whereArgs: [userId],
-    );
-
-    if (maps.isNotEmpty) {
-      return maps.first;
-    }
-    return null;
-  }
-
-  // Legacy method name for compatibility
-  Future<Map<String, dynamic>?> getSettings(int userId) async {
-    return await getUserSettings(userId);
-  }
-
-  // Legacy method name for compatibility
-  Future<void> updateSettings({
-    required int userId,
-    bool? notificationsEnabled,
-    bool? darkModeEnabled,
-    bool? biometricEnabled,
-  }) async {
-    await saveUserSettings(
-      userId: userId,
-      notificationsEnabled: notificationsEnabled ?? true,
-      darkModeEnabled: darkModeEnabled ?? true,
-      biometricEnabled: biometricEnabled ?? false,
-    );
+    return await db.insert('chat_sessions', {
+      'userId': userId,
+      'contactName': contactName,
+      'contactPhone': contactPhone,
+      'contactAvatar': contactAvatar,
+      'lastMessage': 'Connected via QR code',
+      'lastMessageTime': DateTime.now().millisecondsSinceEpoch,
+      'unreadCount': 0,
+      'isActive': 1,
+    });
   }
 }

@@ -25,17 +25,24 @@ class WebSocketService {
   final StreamController<Map<String, dynamic>> _typingStreamController = StreamController<Map<String, dynamic>>.broadcast();
   final StreamController<Map<String, dynamic>> _userStatusStreamController = StreamController<Map<String, dynamic>>.broadcast();
   final StreamController<Map<String, dynamic>> _connectionStreamController = StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _qrConnectionStreamController = StreamController<Map<String, dynamic>>.broadcast();
 
   // Getters for streams
   Stream<Message> get messageStream => _messageStreamController.stream;
   Stream<Map<String, dynamic>> get typingStream => _typingStreamController.stream;
   Stream<Map<String, dynamic>> get userStatusStream => _userStatusStreamController.stream;
   Stream<Map<String, dynamic>> get connectionStream => _connectionStreamController.stream;
+  Stream<Map<String, dynamic>> get qrConnectionStream => _qrConnectionStreamController.stream;
 
   // Connection state
   bool _isConnected = false;
   User? _currentUser;
   String? _currentSocketId;
+
+  // Peer-to-peer connection state (for compatibility with real-time messaging service)
+  final Map<String, dynamic> _connectedPeers = {};
+  String? _localIP;
+  int? _localPort;
 
   // Socket.IO server URL (replace with your actual server URL)
   static const String SERVER_URL = 'http://localhost:3000'; // For local development
@@ -44,6 +51,9 @@ class WebSocketService {
   // Getters
   bool get isConnected => _isConnected;
   String? get currentSocketId => _currentSocketId;
+  Map<String, dynamic> get connectedPeers => _connectedPeers;
+  String? get localIP => _localIP;
+  int? get localPort => _localPort;
 
   /// Initialize WebSocket connection for a user
   Future<bool> connect() async {
@@ -247,19 +257,21 @@ class WebSocketService {
         messageData['from'],
       );
 
+      int sessionId;
       // Create chat session if doesn't exist
       if (chatSession == null) {
-        final sessionId = await _databaseService.createChatSessionForUser(
+        sessionId = await _databaseService.createChatSessionForUser(
           userId: currentUser.id!,
           contactName: messageData['fromName'],
           contactPhone: messageData['from'],
         );
-        chatSession = {'id': sessionId};
+      } else {
+        sessionId = chatSession.id!;
       }
 
       // Save message to database
       final messageId = await _databaseService.insertMessage(
-        sessionId: chatSession['id'],
+        sessionId: sessionId,
         content: messageData['content'],
         isFromMe: false,
         messageType: messageData['messageType'] ?? 'text',
@@ -268,7 +280,7 @@ class WebSocketService {
       // Create message object
       final message = Message(
         id: messageId,
-        sessionId: chatSession['id'],
+        sessionId: sessionId,
         content: messageData['content'],
         isFromMe: false,
         timestamp: DateTime.fromMillisecondsSinceEpoch(messageData['timestamp']),
@@ -382,7 +394,7 @@ class WebSocketService {
   }
 
   /// Disconnect from WebSocket server
-  void disconnect() {
+  Future<void> disconnect() async {
     if (_socket != null) {
       // Update offline status before disconnecting
       updateOnlineStatus(false);
@@ -397,9 +409,62 @@ class WebSocketService {
 
   /// Reconnect to WebSocket server
   Future<bool> reconnect() async {
-    disconnect();
+    await disconnect();
     await Future.delayed(const Duration(seconds: 1));
     return await connect();
+  }
+
+  // ===== Missing methods that real_time_messaging_service.dart expects =====
+
+  /// Generate QR data for peer connection (compatibility method)
+  Map<String, dynamic> generateQRData() {
+    return {
+      'userPhone': _currentUser?.phone ?? '',
+      'userName': _currentUser?.name ?? '',
+      'socketId': _currentSocketId ?? '',
+      'serverUrl': SERVER_URL,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    };
+  }
+
+  /// Connect to peer via QR code (compatibility method)
+  Future<bool> connectToPeerViaQR(Map<String, dynamic> qrData) async {
+    try {
+      // For Socket.IO implementation, we just emit a peer connection request
+      if (_isConnected && _socket != null) {
+        _socket!.emit('peer_connect_request', {
+          'from': _currentUser!.phone,
+          'fromName': _currentUser!.name,
+          'to': qrData['userPhone'],
+          'qrData': qrData,
+        });
+
+        // Simulate connection success for compatibility
+        _qrConnectionStreamController.add({
+          'event': 'peer_connected',
+          'peer': qrData,
+          'success': true,
+        });
+
+        return true;
+      }
+      return false;
+    } catch (e) {
+      print('Error connecting to peer via QR: $e');
+      return false;
+    }
+  }
+
+  /// Send typing status (compatibility method - maps to existing sendTypingIndicator)
+  Future<void> sendTypingStatus(String toPhone, bool isTyping) async {
+    sendTypingIndicator(toPhone, isTyping);
+  }
+
+  /// Check if peer is online (compatibility method)
+  bool isPeerOnline(String contactPhone) {
+    // For Socket.IO implementation, we can check if we have recent status
+    // This is a simplified implementation - in reality you'd check server status
+    return _connectedPeers.containsKey(contactPhone);
   }
 
   /// Dispose resources
@@ -409,5 +474,6 @@ class WebSocketService {
     _typingStreamController.close();
     _userStatusStreamController.close();
     _connectionStreamController.close();
+    _qrConnectionStreamController.close();
   }
 }

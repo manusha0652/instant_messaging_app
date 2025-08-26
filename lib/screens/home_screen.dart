@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'tabs/chats_tab.dart';
 import 'tabs/profile_screen.dart';
 import 'qr_scanner_screen.dart';
+import 'device_to_device_connection_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -26,6 +27,21 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF1E3A5F),
       body: _screens[_selectedIndex],
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const DeviceToDeviceConnectionScreen(),
+            ),
+          );
+        },
+        backgroundColor: const Color(0xFF00A8FF),
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.devices),
+        label: const Text('Test Device Chat'),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerTop,
       bottomNavigationBar: Container(
         margin: const EdgeInsets.only(bottom: 40),
         height: 80,
