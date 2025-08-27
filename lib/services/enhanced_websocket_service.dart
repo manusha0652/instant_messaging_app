@@ -9,7 +9,8 @@ import '../services/internet_discovery_service.dart';
 
 /// Enhanced WebSocket service supporting both local and internet connections
 class EnhancedWebSocketService {
-  static final EnhancedWebSocketService _instance = EnhancedWebSocketService._internal();
+  static final EnhancedWebSocketService _instance =
+      EnhancedWebSocketService._internal();
   factory EnhancedWebSocketService() => _instance;
   EnhancedWebSocketService._internal();
 
@@ -22,18 +23,27 @@ class EnhancedWebSocketService {
   final Map<String, Map<String, dynamic>> _connectedPeers = {};
 
   // Stream controllers
-  final StreamController<Message> _messageStreamController = StreamController<Message>.broadcast();
-  final StreamController<Map<String, dynamic>> _typingStreamController = StreamController<Map<String, dynamic>>.broadcast();
-  final StreamController<Map<String, dynamic>> _userStatusStreamController = StreamController<Map<String, dynamic>>.broadcast();
-  final StreamController<Map<String, dynamic>> _connectionStreamController = StreamController<Map<String, dynamic>>.broadcast();
-  final StreamController<Map<String, dynamic>> _qrConnectionStreamController = StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Message> _messageStreamController =
+      StreamController<Message>.broadcast();
+  final StreamController<Map<String, dynamic>> _typingStreamController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _userStatusStreamController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _connectionStreamController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _qrConnectionStreamController =
+      StreamController<Map<String, dynamic>>.broadcast();
 
   // Getters for streams
   Stream<Message> get messageStream => _messageStreamController.stream;
-  Stream<Map<String, dynamic>> get typingStream => _typingStreamController.stream;
-  Stream<Map<String, dynamic>> get userStatusStream => _userStatusStreamController.stream;
-  Stream<Map<String, dynamic>> get connectionStream => _connectionStreamController.stream;
-  Stream<Map<String, dynamic>> get qrConnectionStream => _qrConnectionStreamController.stream;
+  Stream<Map<String, dynamic>> get typingStream =>
+      _typingStreamController.stream;
+  Stream<Map<String, dynamic>> get userStatusStream =>
+      _userStatusStreamController.stream;
+  Stream<Map<String, dynamic>> get connectionStream =>
+      _connectionStreamController.stream;
+  Stream<Map<String, dynamic>> get qrConnectionStream =>
+      _qrConnectionStreamController.stream;
 
   bool _isConnected = false;
   String? _currentSocketId;
@@ -44,7 +54,8 @@ class EnhancedWebSocketService {
   // Getters
   bool get isConnected => _isConnected;
   String? get currentSocketId => _currentSocketId;
-  Map<String, dynamic> get connectedPeers => Map<String, dynamic>.from(_connectedPeers);
+  Map<String, dynamic> get connectedPeers =>
+      Map<String, dynamic>.from(_connectedPeers);
   String? get localIP => _localIP;
   int? get localPort => _localPort;
 
@@ -85,7 +96,8 @@ class EnhancedWebSocketService {
       }
 
       _isConnected = true;
-      _currentSocketId = '${userPhone}_${DateTime.now().millisecondsSinceEpoch}';
+      _currentSocketId =
+          '${userPhone}_${DateTime.now().millisecondsSinceEpoch}';
 
       return true;
     } catch (e) {
@@ -131,7 +143,10 @@ class EnhancedWebSocketService {
   }
 
   /// Handle peer information exchange
-  Future<void> _handlePeerInfo(WebSocket webSocket, Map<String, dynamic> message) async {
+  Future<void> _handlePeerInfo(
+    WebSocket webSocket,
+    Map<String, dynamic> message,
+  ) async {
     final peerPhone = message['phone'];
     final peerName = message['name'];
 
@@ -185,8 +200,6 @@ class EnhancedWebSocketService {
         isFromMe: message.isFromMe,
         timestamp: message.timestamp,
         messageType: message.messageType,
-        senderPhone: message.senderPhone,
-        receiverPhone: message.receiverPhone,
       );
 
       // Notify listeners
@@ -227,7 +240,12 @@ class EnhancedWebSocketService {
   }
 
   /// Connect directly to a peer
-  Future<bool> _connectToPeerDirect(String ip, int port, String phone, String name) async {
+  Future<bool> _connectToPeerDirect(
+    String ip,
+    int port,
+    String phone,
+    String name,
+  ) async {
     try {
       final webSocket = await WebSocket.connect('ws://$ip:$port');
 
@@ -303,8 +321,6 @@ class EnhancedWebSocketService {
         isFromMe: true,
         timestamp: DateTime.now(),
         messageType: messageType,
-        senderPhone: currentUser.phone,
-        receiverPhone: toPhone,
       );
 
       // Send to peer if connected
@@ -360,7 +376,7 @@ class EnhancedWebSocketService {
   /// Check if peer is online
   bool isPeerOnline(String contactPhone) {
     return _connectedPeers.containsKey(contactPhone) &&
-           _connectedPeers[contactPhone]?['isOnline'] == true;
+        _connectedPeers[contactPhone]?['isOnline'] == true;
   }
 
   /// Send message via WebSocket

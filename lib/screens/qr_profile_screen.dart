@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
+import 'dart:async';
 import '../services/database_service.dart';
 import '../services/user_session_service.dart';
 import '../services/qr_websocket_service.dart';
 import '../models/user.dart';
-import 'dart:async';
+import 'simplified_websocket_chat_screen.dart';
 
 class QRProfileScreen extends StatefulWidget {
   const QRProfileScreen({super.key});
@@ -38,7 +39,9 @@ class _QRProfileScreenState extends State<QRProfileScreen> {
     await _loadUserDataAndStartServer();
 
     // Listen for connection events
-    _connectionSubscription = _webSocketService.connectionStream.listen((event) {
+    _connectionSubscription = _webSocketService.connectionStream.listen((
+      event,
+    ) {
       if (mounted) {
         switch (event['type']) {
           case 'server_started':
@@ -51,6 +54,11 @@ class _QRProfileScreenState extends State<QRProfileScreen> {
                 backgroundColor: Colors.green,
               ),
             );
+            break;
+          case 'server_stopped': // ✅ Add handler for server stopped
+            setState(() {
+              _isServerRunning = false;
+            });
             break;
           case 'client_connected':
             ScaffoldMessenger.of(context).showSnackBar(
@@ -73,19 +81,17 @@ class _QRProfileScreenState extends State<QRProfileScreen> {
 
   Future<void> _loadUserDataAndStartServer() async {
     try {
-      setState(() {
-        _isLoading = true;
-      });
+      setState(() => _isLoading = true);
 
       final String? currentUserPhone = await _sessionService.getCurrentUser();
       if (currentUserPhone != null) {
-        final User? user = await _databaseService.getUserByPhone(currentUserPhone);
+        final User? user = await _databaseService.getUserByPhone(
+          currentUserPhone,
+        );
         if (user != null) {
-          setState(() {
-            _currentUser = user;
-          });
+          setState(() => _currentUser = user);
 
-          // Start WebSocket server
+          // Start simplified WebSocket server
           final connectionInfo = await _webSocketService.startServer(
             userName: user.name,
             userPhone: user.phone,
@@ -95,11 +101,41 @@ class _QRProfileScreenState extends State<QRProfileScreen> {
           if (connectionInfo != null) {
             setState(() {
               _connectionInfo = connectionInfo;
-              _qrData = jsonEncode(connectionInfo);
+              _isServerRunning = true; // ✅ Set server running status here!
+
+              // Debug the connection info
+              print('🔍 QR Generation Debug:');
+              print('  - connectionInfo: $connectionInfo');
+              print(
+                '  - IP: ${connectionInfo['ip']} (${connectionInfo['ip'].runtimeType})',
+              );
+              print(
+                '  - Port: ${connectionInfo['port']} (${connectionInfo['port'].runtimeType})',
+              );
+
+              // Simplified QR data - just connection info
+              final qrMap = {
+                'type': 'chatlink_websocket',
+                'ip': connectionInfo['ip'],
+                'port': connectionInfo['port'],
+                'sessionId': connectionInfo['sessionId'],
+                'hostName': user.name,
+                'hostPhone': user.phone,
+              };
+
+              print('  - QR Map: $qrMap');
+              _qrData = jsonEncode(qrMap);
+              print('  - QR JSON: $_qrData');
               _isLoading = false;
             });
-            print('QR WebSocket server started: ${connectionInfo['ip']}:${connectionInfo['port']}');
+            print(
+              'WebSocket server started: ${connectionInfo['ip']}:${connectionInfo['port']}',
+            );
           } else {
+            setState(() {
+              _isServerRunning =
+                  false; // ✅ Set to false if server failed to start
+            });
             throw Exception('Failed to start WebSocket server');
           }
         } else {
@@ -109,64 +145,32 @@ class _QRProfileScreenState extends State<QRProfileScreen> {
         throw Exception('No current user session found');
       }
     } catch (e) {
-      print('Error loading user data: $e');
+      print('Error: $e');
       setState(() {
         _isLoading = false;
+        _isServerRunning = false; // ✅ Set to false on error
       });
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
         );
       }
     }
   }
 
   void _showConnectionEstablished(Map<String, dynamic> remoteUser) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF2A4A6B),
-        title: const Text(
-          'Device Connected!',
-          style: TextStyle(color: Colors.white),
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SimplifiedWebSocketChatScreen(
+          currentUser: _currentUser!,
+          remoteUserName: remoteUser['name'] ?? 'Unknown User',
+          remoteUserPhone: remoteUser['phone'] ?? '',
+          sessionId: _connectionInfo?['sessionId'] ?? '',
+          isHost: true, // This device is the host
+          serverIp: _connectionInfo?['ip'],
+          serverPort: _connectionInfo?['port'],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.check_circle,
-              color: Colors.green,
-              size: 48,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '${remoteUser['name']} has connected to your QR code',
-              style: const TextStyle(color: Colors.white),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              remoteUser['phone'] ?? '',
-              style: const TextStyle(color: Colors.white70),
-            ),
-          ],
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pop(); // Go back to home
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF00A8FF),
-            ),
-            child: const Text('Start Chatting', style: TextStyle(color: Colors.white)),
-          ),
-        ],
       ),
     );
   }
@@ -195,6 +199,11 @@ class _QRProfileScreenState extends State<QRProfileScreen> {
   }
 
   void _regenerateQR() {
+    setState(() {
+      _isLoading = true;
+      _isServerRunning = false; // ✅ Set to false while regenerating
+    });
+
     _webSocketService.stopServer().then((_) {
       _loadUserDataAndStartServer();
     });
@@ -203,7 +212,8 @@ class _QRProfileScreenState extends State<QRProfileScreen> {
   @override
   void dispose() {
     _connectionSubscription?.cancel();
-    _webSocketService.stopServer();
+    // Don't stop the WebSocket server here - let the chat screen manage it
+    // _webSocketService.stopServer();
     super.dispose();
   }
 
@@ -225,9 +235,7 @@ class _QRProfileScreenState extends State<QRProfileScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: Colors.white),
-            )
+          ? const Center(child: CircularProgressIndicator(color: Colors.white))
           : SingleChildScrollView(
               padding: const EdgeInsets.all(20),
               child: Column(
@@ -235,38 +243,43 @@ class _QRProfileScreenState extends State<QRProfileScreen> {
                   const SizedBox(height: 20),
 
                   // Connection Status
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: _isServerRunning ? Colors.green.withValues(alpha: 0.2) : Colors.orange.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: _isServerRunning ? Colors.green : Colors.orange,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          _isServerRunning ? Icons.wifi : Icons.wifi_off,
-                          color: _isServerRunning ? Colors.green : Colors.orange,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            _isServerRunning
-                                ? 'WebSocket Server Running - Ready for connections!'
-                                : 'Starting WebSocket server...',
-                            style: TextStyle(
-                              color: _isServerRunning ? Colors.green : Colors.orange,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
+                  // Container(
+                  //   width: double.infinity,
+                  //   padding: const EdgeInsets.all(16),
+                  //   decoration: BoxDecoration(
+                  //     color: _isServerRunning
+                  //         ? Colors.green.withValues(alpha: 0.2)
+                  //         : Colors.orange.withValues(alpha: 0.2),
+                  //     borderRadius: BorderRadius.circular(12),
+                  //     border: Border.all(
+                  //       color: _isServerRunning ? Colors.green : Colors.orange,
+                  //     ),
+                  //   ),
+                  //   child: Row(
+                  //     children: [
+                  //       Icon(
+                  //         _isServerRunning ? Icons.wifi : Icons.wifi_off,
+                  //         color: _isServerRunning
+                  //             ? Colors.green
+                  //             : Colors.orange,
+                  //       ),
+                  //       const SizedBox(width: 12),
+                  //       Expanded(
+                  //         child: Text(
+                  //           _isServerRunning
+                  //               ? 'WebSocket Server Running - Ready for connections!'
+                  //               : 'Starting WebSocket server...',
+                  //           style: TextStyle(
+                  //             color: _isServerRunning
+                  //                 ? Colors.green
+                  //                 : Colors.orange,
+                  //             fontWeight: FontWeight.w500,
+                  //           ),
+                  //         ),
+                  //       ),
+                  //     ],
+                  //   ),
+                  // ),
                   const SizedBox(height: 20),
 
                   // User info card
@@ -364,58 +377,6 @@ class _QRProfileScreenState extends State<QRProfileScreen> {
 
                   const SizedBox(height: 30),
 
-                  // Connection info display
-                  if (_connectionInfo != null)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(15),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.2),
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'WebSocket Server Info:',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'IP: ${_connectionInfo!['ip']}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontFamily: 'monospace',
-                            ),
-                          ),
-                          Text(
-                            'Port: ${_connectionInfo!['port']}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontFamily: 'monospace',
-                            ),
-                          ),
-                          Text(
-                            'Session: ${_connectionInfo!['sessionId']}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontFamily: 'monospace',
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
                   const SizedBox(height: 20),
 
                   // Action buttons
@@ -458,43 +419,20 @@ class _QRProfileScreenState extends State<QRProfileScreen> {
                   const SizedBox(height: 20),
 
                   // Instructions
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(15),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: Colors.blue.withValues(alpha: 0.3),
-                      ),
-                    ),
-                    child: const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'How WebSocket QR Connection Works:',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        SizedBox(height: 10),
-                        Text(
-                          '1. Your device starts a WebSocket server\n'
-                          '2. QR code contains server IP, port, and session info\n'
-                          '3. Other device scans QR and connects to your server\n'
-                          '4. Real-time chat begins through WebSocket connection\n'
-                          '5. Both devices can send/receive messages instantly',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
-                            height: 1.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  // Container(
+                  //   width: double.infinity,
+                  //   padding: const EdgeInsets.all(15),
+                  //   decoration: BoxDecoration(
+                  //     color: Colors.blue.withValues(alpha: 0.1),
+                  //     borderRadius: BorderRadius.circular(10),
+                  //     border: Border.all(
+                  //       color: Colors.blue.withValues(alpha: 0.3),
+                  //     ),
+                  //   ),
+                  //   child: const Column(
+                  //     crossAxisAlignment: CrossAxisAlignment.start,
+                  //   ),
+                  // ),
                 ],
               ),
             ),
