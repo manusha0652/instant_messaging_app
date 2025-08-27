@@ -11,12 +11,6 @@ class UserSessionService {
     return prefs.getString('current_user');
   }
 
-  // Check if user has biometric enabled
-  Future<bool> isBiometricEnabled(String phoneNumber) async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool('biometric_enabled_$phoneNumber') ?? false;
-  }
-
   // Get last authenticated user
   Future<String?> getLastAuthenticatedUser() async {
     final prefs = await SharedPreferences.getInstance();
@@ -60,12 +54,6 @@ class UserSessionService {
   // Legacy method name for compatibility
   Future<void> logout() async {
     await clearSession();
-  }
-
-  // Enable/disable biometric authentication for user
-  Future<void> setBiometricEnabled(String phoneNumber, bool enabled) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('biometric_enabled_$phoneNumber', enabled);
   }
 
   // Check if this is user's first time setup
