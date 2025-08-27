@@ -198,7 +198,7 @@ class _SplashScreenState extends State<SplashScreen>
                             Color(0xFF00A8FF),
                           ),
                           strokeWidth: 3.0,
-                          backgroundColor: Colors.white.withOpacity(0.2),
+                          backgroundColor: Colors.white.withValues(alpha: 0.2),
                         ),
                       ),
 
@@ -217,55 +217,6 @@ class _SplashScreenState extends State<SplashScreen>
                 ),
               );
             },
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// Temporary Home Screen for navigation
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('ChatLink'),
-        backgroundColor: const Color(0xFF00A8FF),
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF00A8FF), Color(0xFF1E3A5F)],
-          ),
-        ),
-        child: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.check_circle_outline, size: 80, color: Colors.white),
-              SizedBox(height: 20),
-              Text(
-                'Welcome to ChatLink!',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              SizedBox(height: 10),
-              Text(
-                'Your secure messaging experience starts here',
-                style: TextStyle(fontSize: 16, color: Colors.white70),
-                textAlign: TextAlign.center,
-              ),
-            ],
           ),
         ),
       ),

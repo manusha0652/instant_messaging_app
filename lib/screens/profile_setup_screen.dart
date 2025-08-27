@@ -48,7 +48,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         bio: _bioController.text.trim().isEmpty
             ? null
             : _bioController.text.trim(),
-        createdAt: DateTime.now().millisecondsSinceEpoch,
+        createdAt: DateTime.now(),
       );
 
       // Save to database

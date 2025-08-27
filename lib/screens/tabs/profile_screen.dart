@@ -34,17 +34,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (currentUserPhone != null) {
         // Load user data from database
-        final User? user = await _databaseService.getUserByPhone(
-          currentUserPhone,
-        );
-        final Map<String, dynamic> settings = await _databaseService
-            .getSettings();
+        final User? user = await _databaseService.getUserByPhone(currentUserPhone);
 
-        setState(() {
-          _currentUser = user;
-          _settings = settings;
-          _isLoading = false;
-        });
+        if (user != null) {
+          setState(() {
+            _currentUser = user;
+            _isLoading = false;
+          });
+        } else {
+          setState(() {
+            _isLoading = false;
+          });
+        }
       } else {
         setState(() {
           _isLoading = false;
@@ -60,66 +61,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadDarkModeSetting() async {
     try {
-      final settings = await _databaseService.getSettings();
+      // Get current user first
+      final currentUserPhone = await _sessionService.getCurrentUser();
+      if (currentUserPhone == null) return;
+
+      final currentUser = await _databaseService.getUserByPhone(currentUserPhone);
+      if (currentUser == null) return;
+
+      final settings = await _databaseService.getSettings(currentUser.id!);
       setState(() {
-        _isDarkMode = settings['darkModeEnabled'] == 1;
+        _settings = settings ?? {};
+        _isDarkMode = settings?['darkModeEnabled'] == 1;
       });
     } catch (e) {
-      print('Error loading dark mode setting: $e');
+      print('Error loading settings: $e');
     }
   }
 
-  Future<void> _handleLogout() async {
+  void _navigateToQRProfile() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const QRProfileScreen(),
+      ),
+    );
+  }
+
+  Future<void> _logout() async {
     try {
-      // Show confirmation dialog
-      bool? confirmLogout = await showDialog<bool>(
-        context: context,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            title: const Text('Logout'),
-            content: const Text('Are you sure you want to logout?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('Logout'),
-              ),
-            ],
-          );
-        },
-      );
-
-      if (confirmLogout == true) {
-        // Get current user phone before clearing session
-        final String? currentUserPhone = await _sessionService.getCurrentUser();
-
-        // Clear current session but keep last authenticated user
-        await _sessionService.clearSession();
-
-        // Navigate to fingerprint authentication screen for re-authentication
-        if (mounted && currentUserPhone != null) {
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(
-              builder: (context) => FingerprintAuthScreen(
-                phoneNumber: currentUserPhone,
-                isSetup: false, // Authentication mode, not setup
-              ),
-            ),
-            (route) => false,
-          );
-        } else {
-          // Fallback to login if no current user found
-          Navigator.pushNamedAndRemoveUntil(
-            context,
-            '/login',
-            (route) => false,
-          );
-        }
-      }
+      await _sessionService.logout();
+      Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -130,9 +101,55 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  void _showLogoutDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A4A6B),
+        title: const Text(
+          'Logout',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'Are you sure you want to logout?',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white70),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _logout();
+            },
+            child: const Text(
+              'Logout',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _toggleDarkMode(bool value) async {
     try {
-      await _databaseService.updateSettings({'darkModeEnabled': value ? 1 : 0});
+      // Get current user first
+      final currentUserPhone = await _sessionService.getCurrentUser();
+      if (currentUserPhone == null) return;
+
+      final currentUser = await _databaseService.getUserByPhone(currentUserPhone);
+      if (currentUser == null) return;
+
+      await _databaseService.updateSettings(
+        currentUser.id!,
+        {'darkModeEnabled': value ? 1 : 0}
+      );
       setState(() {
         _isDarkMode = value;
         _settings['darkModeEnabled'] = value ? 1 : 0;
@@ -570,7 +587,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         color: Colors.red,
                         size: 16,
                       ),
-                      onTap: _handleLogout,
+                      onTap: _showLogoutDialog,
                     ),
                   ],
                 ),
