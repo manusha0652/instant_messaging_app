@@ -28,7 +28,7 @@ dependencies:
   
   # Real-time messaging
   socket_io_client: ^2.0.3
-  web_socket_channel: ^2.4.0
+  web_socket_channel: ^3.0.3
   http: ^1.1.0
   uuid: ^4.0.0
 

@@ -4,6 +4,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'dart:convert';
 import '../services/database_service.dart';
 import '../services/user_session_service.dart';
+import '../services/qr_websocket_service.dart';
+import 'qr_websocket_chat_screen.dart';
 
 class QRScannerScreen extends StatefulWidget {
   const QRScannerScreen({super.key});
@@ -16,21 +18,22 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
   bool _torchOn = false;
   final DatabaseService _databaseService = DatabaseService();
   final UserSessionService _sessionService = UserSessionService();
+  final QRWebSocketService _webSocketService = QRWebSocketService();
   MobileScannerController? cameraController;
-  String? result;
   bool _hasScanned = false;
   bool _cameraInitialized = false;
   String? _cameraError;
+  bool _isProcessing = false;
 
   @override
   void initState() {
     super.initState();
     _initializeCamera();
+    _webSocketService.initialize();
   }
 
   Future<void> _initializeCamera() async {
     try {
-      // Request permission first
       final status = await Permission.camera.request();
       if (status.isDenied) {
         setState(() {
@@ -39,7 +42,6 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
         return;
       }
 
-      // Initialize camera controller
       cameraController = MobileScannerController(
         facing: CameraFacing.back,
         torchEnabled: false,
@@ -51,22 +53,332 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
         _cameraError = null;
       });
     } catch (e) {
-      print('Camera initialization error: $e');
       setState(() {
         _cameraError = 'Failed to initialize camera: $e';
-        _cameraInitialized = false;
       });
     }
   }
 
-  Future<void> _requestCameraPermission() async {
-    final status = await Permission.camera.status;
-    if (status.isDenied) {
-      final result = await Permission.camera.request();
-      if (result.isDenied) {
-        throw Exception('Camera permission is required to scan QR codes');
+  Future<void> _processQRCode(String qrData) async {
+    if (_isProcessing || _hasScanned) return;
+
+    setState(() {
+      _isProcessing = true;
+      _hasScanned = true;
+    });
+
+    // Stop the camera immediately to prevent multiple scans
+    if (cameraController != null) {
+      await cameraController!.stop();
+    }
+
+    try {
+      final Map<String, dynamic> data = jsonDecode(qrData);
+
+      if (data['type'] == 'qr_websocket_connection') {
+        await _handleWebSocketConnection(data);
+      } else {
+        throw Exception('Invalid QR code type. Expected WebSocket connection.');
+      }
+    } catch (e) {
+      setState(() {
+        _isProcessing = false;
+        _hasScanned = false;
+      });
+
+      // Restart camera if there was an error
+      if (cameraController != null) {
+        await cameraController!.start();
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Invalid QR code: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
+  }
+
+  Future<void> _handleWebSocketConnection(Map<String, dynamic> qrData) async {
+    try {
+      final String? currentUserPhone = await _sessionService.getCurrentUser();
+      if (currentUserPhone == null) {
+        throw Exception('No user session found');
+      }
+
+      final currentUser = await _databaseService.getUserByPhone(currentUserPhone);
+      if (currentUser == null) {
+        throw Exception('Current user not found in database');
+      }
+
+      final String serverIP = qrData['ip'] ?? '';
+      final int serverPort = qrData['port'] ?? 0;
+      final String sessionId = qrData['sessionId'] ?? '';
+      final String remoteUserName = qrData['userName'] ?? 'Unknown User';
+      final String remoteUserPhone = qrData['userPhone'] ?? '';
+      final String remoteUserBio = qrData['userBio'] ?? '';
+
+      if (serverIP.isEmpty || serverPort == 0 || sessionId.isEmpty) {
+        throw Exception('Invalid QR code: Missing connection info');
+      }
+
+      if (remoteUserPhone == currentUserPhone) {
+        throw Exception('Cannot connect to yourself');
+      }
+
+      if (mounted) {
+        final bool? shouldConnect = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: const Color(0xFF2A4A6B),
+            title: const Text(
+              'Connect via WebSocket',
+              style: TextStyle(color: Colors.white),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Connect to WebSocket server:',
+                  style: TextStyle(color: Colors.white70),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  remoteUserName,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  remoteUserPhone,
+                  style: const TextStyle(color: Colors.white70),
+                ),
+                if (remoteUserBio.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    remoteUserBio,
+                    style: const TextStyle(color: Colors.white60, fontSize: 14),
+                  ),
+                ],
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.wifi, color: Colors.blue, size: 16),
+                          SizedBox(width: 8),
+                          Text(
+                            'WebSocket Connection',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Server: $serverIP:$serverPort',
+                        style: const TextStyle(color: Colors.white70, fontSize: 11, fontFamily: 'monospace'),
+                      ),
+                      Text(
+                        'Session: $sessionId',
+                        style: const TextStyle(color: Colors.white70, fontSize: 11, fontFamily: 'monospace'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF00A8FF),
+                ),
+                child: const Text('Connect', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
+        );
+
+        if (shouldConnect == true && mounted) {
+          // Show connecting dialog with more details
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              backgroundColor: const Color(0xFF2A4A6B),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(color: Colors.white),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Connecting to WebSocket server...',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Server: $serverIP:$serverPort',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'monospace'),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Make sure both devices are on the same WiFi network',
+                    style: TextStyle(color: Colors.orange, fontSize: 11),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          );
+
+          // Connect to WebSocket server with detailed error handling
+          try {
+            final success = await _webSocketService.connectToServer(
+              serverIP: serverIP,
+              serverPort: serverPort,
+              sessionId: sessionId,
+              userName: currentUser.name,
+              userPhone: currentUser.phone,
+            );
+
+            if (mounted) {
+              Navigator.of(context).pop(); // Close connecting dialog
+            }
+
+            if (success && mounted) {
+              // Navigate to WebSocket chat screen
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => QRWebSocketChatScreen(
+                    remoteUserName: remoteUserName,
+                    remoteUserPhone: remoteUserPhone,
+                    sessionId: sessionId,
+                    serverInfo: '$serverIP:$serverPort',
+                  ),
+                ),
+              );
+            } else {
+              if (mounted) {
+                _showDetailedError(serverIP, serverPort);
+              }
+              setState(() {
+                _isProcessing = false;
+                _hasScanned = false;
+              });
+            }
+          } catch (e) {
+            if (mounted) {
+              Navigator.of(context).pop(); // Close connecting dialog
+              _showDetailedError(serverIP, serverPort, error: e.toString());
+            }
+            setState(() {
+              _isProcessing = false;
+              _hasScanned = false;
+            });
+          }
+        } else {
+          setState(() {
+            _isProcessing = false;
+            _hasScanned = false;
+          });
+        }
+      }
+    } catch (e) {
+      setState(() {
+        _isProcessing = false;
+        _hasScanned = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Connection failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showDetailedError(String serverIP, int serverPort, {String? error}) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A4A6B),
+        title: const Text(
+          'Connection Error',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (error != null) ...[
+              Text(
+                'Error: $error',
+                style: const TextStyle(color: Colors.red, fontSize: 14),
+              ),
+              const SizedBox(height: 8),
+            ],
+            const Text(
+              'Unable to connect to the WebSocket server.',
+              style: TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Server IP: $serverIP',
+              style: const TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'monospace'),
+            ),
+            Text(
+              'Server Port: $serverPort',
+              style: const TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'monospace'),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Troubleshooting Tips:',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              '• Ensure the server is running.',
+              style: TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+            const Text(
+              '• Check your internet connection.',
+              style: TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+            const Text(
+              '• Make sure both devices are on the same WiFi network.',
+              style: TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK', style: TextStyle(color: Colors.white70)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -140,7 +452,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (result != null && !_hasScanned)
+                      if (_hasScanned)
                         _buildScannedResult()
                       else
                         _buildInstructions(),
@@ -282,7 +594,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
           const Icon(Icons.check_circle, color: Colors.green, size: 48),
           const SizedBox(height: 12),
           const Text(
-            'Contact Found!',
+            'QR Code Detected!',
             style: TextStyle(
               color: Colors.white,
               fontSize: 18,
@@ -291,31 +603,9 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Tap to add contact and start chatting',
+            'Processing connection...',
             style: TextStyle(color: Colors.white70, fontSize: 14),
             textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: () {
-              // Process the scanned result directly
-              if (result != null) {
-                _handleScanResult(result!);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF00A8FF),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            icon: const Icon(Icons.person_add),
-            label: const Text(
-              'Add Contact',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
           ),
         ],
       ),
@@ -356,119 +646,14 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
   void _onDetect(BarcodeCapture capture) {
     final List<Barcode> barcodes = capture.barcodes;
     for (final barcode in barcodes) {
-      if (barcode.rawValue != null && !_hasScanned) {
+      if (barcode.rawValue != null && !_hasScanned && !_isProcessing) {
         setState(() {
-          result = barcode.rawValue;
+          _hasScanned = true;
         });
-        _handleScanResult(barcode.rawValue!);
+        _processQRCode(barcode.rawValue!);
         break;
       }
     }
-  }
-
-  Future<void> _handleScanResult(String scannedData) async {
-    if (_hasScanned) return;
-    _hasScanned = true;
-
-    try {
-      // Parse QR code data
-      final qrData = jsonDecode(scannedData);
-      final contactPhone = qrData['phone'] as String;
-      final contactName = qrData['name'] as String;
-      final contactBio = qrData['bio'] as String?;
-      final socketId = qrData['socketId'] as String?;
-
-      // Get current user
-      final currentUserPhone = await _sessionService.getCurrentUser();
-      if (currentUserPhone == null) {
-        _showErrorDialog('User session not found');
-        return;
-      }
-
-      final currentUser = await _databaseService.getUserByPhone(currentUserPhone);
-      if (currentUser == null) {
-        _showErrorDialog('Current user not found');
-        return;
-      }
-
-      // Check if trying to add themselves
-      if (contactPhone == currentUserPhone) {
-        _showErrorDialog('You cannot add yourself as a contact');
-        return;
-      }
-
-      // Check if contact already exists
-      final existingContact = await _databaseService.isContactExists(currentUser.id!, contactPhone);
-      if (existingContact) {
-        _showErrorDialog('Contact already exists');
-        return;
-      }
-
-      // Add contact to database
-      await _databaseService.addContact(
-        userId: currentUser.id!,
-        contactPhone: contactPhone,
-        contactName: contactName,
-        contactBio: contactBio,
-      );
-
-      // Create or get chat session
-      final existingSession = await _databaseService.getChatSessionByUserAndPhone(currentUser.id!, contactPhone);
-      
-      if (existingSession == null) {
-        await _databaseService.createChatSessionForUser(
-          userId: currentUser.id!,
-          contactName: contactName,
-          contactPhone: contactPhone,
-        );
-      }
-
-      // Show success dialog
-      _showSuccessDialog(contactName);
-
-    } catch (e) {
-      _showErrorDialog('Invalid QR code format');
-    }
-  }
-
-  void _showSuccessDialog(String contactName) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Contact Added'),
-        content: Text('$contactName has been added to your contacts!'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pop(); // Go back to previous screen
-            },
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showErrorDialog(String error) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Error'),
-        content: Text(error),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              setState(() {
-                _hasScanned = false; // Allow scanning again
-              });
-            },
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
