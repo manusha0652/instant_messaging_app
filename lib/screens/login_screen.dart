@@ -130,17 +130,17 @@ class _LoginScreenState extends State<LoginScreen> {
           padding: const EdgeInsets.all(24.0),
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              minHeight:
-                  MediaQuery.of(context).size.height -
+              minHeight: MediaQuery.of(context).size.height -
                   MediaQuery.of(context).padding.top -
                   MediaQuery.of(context).padding.bottom -
                   48,
             ),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 // Top section with logo and title
-                Expanded(
-                  flex: 2,
+                SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.4,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -159,47 +159,10 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ],
                         ),
-                        child: Stack(
-                          children: [
-                            // Main chat bubble
-                            Positioned(
-                              top: 18,
-                              left: 18,
-                              child: Container(
-                                width: 44,
-                                height: 32,
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                            ),
-                            // Chat tail dots
-                            Positioned(
-                              bottom: 22,
-                              left: 22,
-                              child: Container(
-                                width: 8,
-                                height: 8,
-                                decoration: const BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              bottom: 16,
-                              left: 16,
-                              child: Container(
-                                width: 6,
-                                height: 6,
-                                decoration: const BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                            ),
-                          ],
+                        child: const Icon(
+                          Icons.chat_bubble_outline,
+                          color: Colors.white,
+                          size: 40,
                         ),
                       ),
 
@@ -212,19 +175,19 @@ class _LoginScreenState extends State<LoginScreen> {
                             TextSpan(
                               text: 'Chat',
                               style: TextStyle(
+                                color: Colors.white,
                                 fontSize: 32,
                                 fontWeight: FontWeight.w300,
-                                color: Colors.white,
-                                letterSpacing: 1,
+                                letterSpacing: 1.0,
                               ),
                             ),
                             TextSpan(
                               text: 'Link',
                               style: TextStyle(
+                                color: Color(0xFF00A8FF),
                                 fontSize: 32,
                                 fontWeight: FontWeight.w600,
-                                color: Color(0xFF00A8FF),
-                                letterSpacing: 1,
+                                letterSpacing: 1.0,
                               ),
                             ),
                           ],
@@ -234,24 +197,26 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
 
-                // Login form section
-                Expanded(
+                // Bottom section with login form
+                Flexible(
                   flex: 3,
                   child: Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(24),
+                    constraints: const BoxConstraints(maxHeight: double.infinity),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF2A4A6B), // Lighter blue for card
+                      color: const Color(0xFF2A4A6B),
                       borderRadius: BorderRadius.circular(24),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.2),
+                          color: Colors.black.withOpacity(0.2),
                           blurRadius: 20,
                           offset: const Offset(0, 10),
                         ),
                       ],
                     ),
+                    padding: const EdgeInsets.all(24),
                     child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // Welcome Back title
