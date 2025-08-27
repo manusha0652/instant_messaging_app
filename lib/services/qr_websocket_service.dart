@@ -24,14 +24,18 @@ class QRWebSocketService {
   String? _sessionId;
 
   // Stream controllers
-  final StreamController<Message> _messageStreamController = StreamController<Message>.broadcast();
-  final StreamController<Map<String, dynamic>> _connectionStreamController = StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Message> _messageStreamController =
+      StreamController<Message>.broadcast();
+  final StreamController<Map<String, dynamic>> _connectionStreamController =
+      StreamController<Map<String, dynamic>>.broadcast();
 
   // Getters
   Stream<Message> get messageStream => _messageStreamController.stream;
-  Stream<Map<String, dynamic>> get connectionStream => _connectionStreamController.stream;
+  Stream<Map<String, dynamic>> get connectionStream =>
+      _connectionStreamController.stream;
   bool get isConnected => _isConnected;
-  String? get connectionInfo => _localIP != null && _localPort != null ? '$_localIP:$_localPort' : null;
+  String? get connectionInfo =>
+      _localIP != null && _localPort != null ? '$_localIP:$_localPort' : null;
 
   /// Initialize the QR WebSocket service
   Future<bool> initialize() async {
@@ -49,27 +53,38 @@ class QRWebSocketService {
   Future<void> _getLocalIP() async {
     try {
       // Try to get WiFi/Network interface first
-      final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4);
+      final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+      );
+      print(
+        'Available network interfaces: ${interfaces.map((i) => '${i.name}: ${i.addresses.map((a) => a.address).join(", ")}').join("; ")}',
+      );
 
       // Look for WiFi interface first (usually starts with 'wlan' or similar)
       for (final interface in interfaces) {
         if (interface.name.toLowerCase().contains('wlan') ||
-            interface.name.toLowerCase().contains('wifi') ||
-            interface.name.toLowerCase().contains('eth')) {
+            interface.name.toLowerCase().contains('wifi')) {
           for (final address in interface.addresses) {
-            if (address.type == InternetAddressType.IPv4 && !address.isLoopback) {
+            if (address.type == InternetAddressType.IPv4 &&
+                !address.isLoopback) {
               // Check if it's a private network address
               final addressParts = address.address.split('.');
               if (addressParts.length == 4) {
                 final firstOctet = int.tryParse(addressParts[0]) ?? 0;
                 final secondOctet = int.tryParse(addressParts[1]) ?? 0;
 
-                // Check for private IP ranges (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+                // Check for private IP ranges (192.168.x.x, 10.x.x.x but not 10.0.2.x emulator, 172.16-31.x.x)
                 if ((firstOctet == 192 && secondOctet == 168) ||
-                    (firstOctet == 10) ||
-                    (firstOctet == 172 && secondOctet >= 16 && secondOctet <= 31)) {
+                    (firstOctet == 10 &&
+                        !(secondOctet == 0 &&
+                            int.tryParse(addressParts[2]) == 2)) ||
+                    (firstOctet == 172 &&
+                        secondOctet >= 16 &&
+                        secondOctet <= 31)) {
                   _localIP = address.address;
-                  print('Found WiFi IP address: $_localIP on interface ${interface.name}');
+                  print(
+                    'Found WiFi IP address: $_localIP on interface ${interface.name}',
+                  );
                   return;
                 }
               }
@@ -78,20 +93,26 @@ class QRWebSocketService {
         }
       }
 
-      // If no WiFi interface found, try any non-loopback IPv4 address
+      // If no WiFi interface found, try any non-loopback IPv4 address (excluding emulator IP)
       for (final interface in interfaces) {
         for (final address in interface.addresses) {
           if (address.type == InternetAddressType.IPv4 && !address.isLoopback) {
-            _localIP = address.address;
-            print('Found IP address: $_localIP on interface ${interface.name}');
-            return;
+            // Skip emulator IP 10.0.2.15
+            if (address.address != '10.0.2.15') {
+              _localIP = address.address;
+              print(
+                'Found IP address: $_localIP on interface ${interface.name}',
+              );
+              return;
+            }
           }
         }
       }
 
-      // Fallback to localhost if no network interface found
-      _localIP = '192.168.1.100'; // Use a common private IP as fallback instead of localhost
-      print('No network interface found, using fallback IP: $_localIP');
+      // If still no valid IP found, warn user
+      _localIP = '192.168.1.100'; // Use a common private IP as fallback
+      print('WARNING: No valid WiFi IP found. Using fallback IP: $_localIP');
+      print('Make sure both devices are connected to the same WiFi network!');
     } catch (e) {
       print('Error getting local IP: $e');
       _localIP = '192.168.1.100'; // Fallback IP
@@ -168,7 +189,13 @@ class QRWebSocketService {
     required String userPhone,
   }) async {
     try {
+      print('=== STARTING WEBSOCKET CONNECTION ===');
+      print('Target server: $serverIP:$serverPort');
+      print('Session ID: $sessionId');
+      print('User: $userName ($userPhone)');
+
       if (_clientChannel != null) {
+        print('Closing existing client channel...');
         await _clientChannel!.sink.close();
         _clientChannel = null;
       }
@@ -180,8 +207,12 @@ class QRWebSocketService {
       _isConnected = false;
       _sessionId = sessionId;
 
-      // Create connection
-      _clientChannel = IOWebSocketChannel.connect(uri);
+      // Create connection with timeout
+      print('Creating WebSocket connection...');
+      _clientChannel = IOWebSocketChannel.connect(
+        uri,
+        connectTimeout: const Duration(seconds: 10),
+      );
 
       // Create completer for connection establishment
       final connectionCompleter = Completer<bool>();
@@ -190,27 +221,28 @@ class QRWebSocketService {
       // Listen for messages and connection events
       _clientChannel!.stream.listen(
         (data) {
-          print('Received WebSocket data: $data');
+          print('✅ Received WebSocket data: $data');
           _handleMessage(data);
 
           // If we receive any message, the connection is established
           if (!connectionHandshakeComplete) {
             connectionHandshakeComplete = true;
             _isConnected = true;
+            print('✅ WebSocket connection established successfully!');
             if (!connectionCompleter.isCompleted) {
               connectionCompleter.complete(true);
             }
           }
         },
         onError: (error) {
-          print('WebSocket client error: $error');
+          print('❌ WebSocket client error: $error');
           _handleDisconnection();
           if (!connectionCompleter.isCompleted) {
             connectionCompleter.complete(false);
           }
         },
         onDone: () {
-          print('WebSocket client connection closed');
+          print('🔌 WebSocket client connection closed');
           _handleDisconnection();
           if (!connectionCompleter.isCompleted) {
             connectionCompleter.complete(false);
@@ -219,9 +251,10 @@ class QRWebSocketService {
       );
 
       // Wait a moment for the connection to establish, then send connection request
-      await Future.delayed(const Duration(milliseconds: 500));
+      print('Waiting for connection to stabilize...');
+      await Future.delayed(const Duration(milliseconds: 1000));
 
-      print('Sending connection request...');
+      print('📤 Sending connection request...');
       _sendMessage({
         'type': 'connection_request',
         'sessionId': sessionId,
@@ -231,32 +264,34 @@ class QRWebSocketService {
       });
 
       // Wait for connection handshake or timeout
+      print('⏳ Waiting for connection response...');
       final result = await connectionCompleter.future.timeout(
-        const Duration(seconds: 15),
+        const Duration(seconds: 20),
         onTimeout: () {
-          print('WebSocket connection timeout after 15 seconds');
+          print('⏰ WebSocket connection timeout after 20 seconds');
           return false;
         },
       );
 
       if (result) {
-        print('WebSocket connection established successfully');
+        print('🎉 WebSocket connection SUCCESS!');
         _connectionStreamController.add({
           'type': 'connected_to_server',
           'serverIP': serverIP,
           'serverPort': serverPort,
         });
       } else {
-        print('Failed to establish WebSocket connection');
+        print('💥 Failed to establish WebSocket connection');
         if (_clientChannel != null) {
           await _clientChannel!.sink.close();
           _clientChannel = null;
         }
       }
 
+      print('=== CONNECTION ATTEMPT COMPLETED: $result ===');
       return result;
     } catch (e) {
-      print('Error connecting to QR WebSocket server: $e');
+      print('💥 Error connecting to QR WebSocket server: $e');
       _isConnected = false;
       return false;
     }
@@ -280,9 +315,7 @@ class QRWebSocketService {
       },
     );
 
-    _connectionStreamController.add({
-      'type': 'client_connected',
-    });
+    _connectionStreamController.add({'type': 'client_connected'});
   }
 
   /// Handle incoming WebSocket messages
@@ -314,31 +347,31 @@ class QRWebSocketService {
 
   /// Handle connection request
   void _handleConnectionRequest(Map<String, dynamic> data) {
-    print('Received connection request from ${data['userName']}');
+    print(
+      '📥 Received connection request from ${data['userName']} (${data['userPhone']})',
+    );
 
     // Auto-accept connection request
+    print('📤 Sending connection acceptance...');
     _sendMessage({
       'type': 'connection_accepted',
       'sessionId': _sessionId,
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     });
 
+    print('🎯 Broadcasting connection established event...');
     _connectionStreamController.add({
       'type': 'connection_established',
-      'remoteUser': {
-        'name': data['userName'],
-        'phone': data['userPhone'],
-      },
+      'remoteUser': {'name': data['userName'], 'phone': data['userPhone']},
     });
   }
 
   /// Handle connection accepted
   void _handleConnectionAccepted(Map<String, dynamic> data) {
-    print('Connection accepted by server');
+    print('✅ Connection accepted by server');
 
-    _connectionStreamController.add({
-      'type': 'connection_established',
-    });
+    print('🎯 Broadcasting connection established event...');
+    _connectionStreamController.add({'type': 'connection_established'});
   }
 
   /// Handle chat message
@@ -349,7 +382,9 @@ class QRWebSocketService {
         sessionId: int.tryParse(_sessionId ?? '0') ?? 0,
         content: data['content'] ?? '',
         isFromMe: false,
-        timestamp: DateTime.fromMillisecondsSinceEpoch(data['timestamp'] ?? DateTime.now().millisecondsSinceEpoch),
+        timestamp: DateTime.fromMillisecondsSinceEpoch(
+          data['timestamp'] ?? DateTime.now().millisecondsSinceEpoch,
+        ),
         senderPhone: data['senderPhone'] ?? '',
         receiverPhone: null,
       );
@@ -395,7 +430,9 @@ class QRWebSocketService {
 
       // Also add to local stream
       final message = Message(
-        id: int.tryParse(messageData['messageId'].toString()) ?? DateTime.now().millisecondsSinceEpoch,
+        id:
+            int.tryParse(messageData['messageId'].toString()) ??
+            DateTime.now().millisecondsSinceEpoch,
         sessionId: int.tryParse(_sessionId ?? '0') ?? 0,
         content: content,
         isFromMe: true,
@@ -442,9 +479,7 @@ class QRWebSocketService {
   /// Handle disconnection
   void _handleDisconnection() {
     _isConnected = false;
-    _connectionStreamController.add({
-      'type': 'disconnected',
-    });
+    _connectionStreamController.add({'type': 'disconnected'});
   }
 
   /// Stop WebSocket server
@@ -504,7 +539,10 @@ class QRWebSocketService {
   String _generateSessionId() {
     final random = Random();
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    return List.generate(8, (index) => chars[random.nextInt(chars.length)]).join();
+    return List.generate(
+      8,
+      (index) => chars[random.nextInt(chars.length)],
+    ).join();
   }
 
   /// Dispose the service

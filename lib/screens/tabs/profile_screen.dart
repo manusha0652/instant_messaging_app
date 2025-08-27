@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../services/database_service.dart';
 import '../../services/user_session_service.dart';
 import '../../models/user.dart';
-import '../fingerprint_authentication.dart';
 import '../qr_profile_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -34,7 +33,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (currentUserPhone != null) {
         // Load user data from database
-        final User? user = await _databaseService.getUserByPhone(currentUserPhone);
+        final User? user = await _databaseService.getUserByPhone(
+          currentUserPhone,
+        );
 
         if (user != null) {
           setState(() {
@@ -65,7 +66,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final currentUserPhone = await _sessionService.getCurrentUser();
       if (currentUserPhone == null) return;
 
-      final currentUser = await _databaseService.getUserByPhone(currentUserPhone);
+      final currentUser = await _databaseService.getUserByPhone(
+        currentUserPhone,
+      );
       if (currentUser == null) return;
 
       final settings = await _databaseService.getSettings(currentUser.id!);
@@ -81,9 +84,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void _navigateToQRProfile() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => const QRProfileScreen(),
-      ),
+      MaterialPageRoute(builder: (context) => const QRProfileScreen()),
     );
   }
 
@@ -106,10 +107,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF2A4A6B),
-        title: const Text(
-          'Logout',
-          style: TextStyle(color: Colors.white),
-        ),
+        title: const Text('Logout', style: TextStyle(color: Colors.white)),
         content: const Text(
           'Are you sure you want to logout?',
           style: TextStyle(color: Colors.white70),
@@ -127,10 +125,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Navigator.pop(context);
               _logout();
             },
-            child: const Text(
-              'Logout',
-              style: TextStyle(color: Colors.red),
-            ),
+            child: const Text('Logout', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -143,13 +138,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final currentUserPhone = await _sessionService.getCurrentUser();
       if (currentUserPhone == null) return;
 
-      final currentUser = await _databaseService.getUserByPhone(currentUserPhone);
+      final currentUser = await _databaseService.getUserByPhone(
+        currentUserPhone,
+      );
       if (currentUser == null) return;
 
-      await _databaseService.updateSettings(
-        currentUser.id!,
-        {'darkModeEnabled': value ? 1 : 0}
-      );
+      await _databaseService.updateSettings(currentUser.id!, {
+        'darkModeEnabled': value ? 1 : 0,
+      });
       setState(() {
         _isDarkMode = value;
         _settings['darkModeEnabled'] = value ? 1 : 0;
@@ -231,30 +227,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                         const Spacer(),
 
-                        // QR Code button
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF00A8FF).withOpacity(0.2),
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: const Color(0xFF00A8FF),
-                              width: 1,
-                            ),
-                          ),
-                          child: IconButton(
-                            onPressed: _openQRProfile,
-                            icon: const Icon(
-                              Icons.qr_code,
-                              color: Color(0xFF00A8FF),
-                              size: 20,
-                            ),
-                            padding: EdgeInsets.zero,
-                            tooltip: 'My QR Code',
-                          ),
-                        ),
-
                         const SizedBox(width: 12),
 
                         // Edit button
@@ -322,53 +294,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // Call button
-                        Container(
-                          width: 60,
-                          height: 60,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF1E3A5F),
-                            shape: BoxShape.circle,
-                          ),
-                          child: IconButton(
-                            onPressed: () {
-                              // Handle call
-                            },
-                            icon: const Icon(
-                              Icons.call,
-                              color: Colors.white,
-                              size: 24,
-                            ),
-                          ),
-                        ),
-
+                        // // Call button
+                        // Container(
+                        //   width: 60,
+                        //   height: 60,
+                        //   decoration: const BoxDecoration(
+                        //     color: Color(0xFF1E3A5F),
+                        //     shape: BoxShape.circle,
+                        //   ),
+                        //   child: IconButton(
+                        //     onPressed: () {
+                        //       // Handle call
+                        //     },
+                        //     icon: const Icon(
+                        //       Icons.call,
+                        //       color: Colors.white,
+                        //       size: 24,
+                        //     ),
+                        //   ),
+                        // ),
                         const SizedBox(width: 20),
 
-                        // QR Share button
-                        Container(
-                          width: 60,
-                          height: 60,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF00A8FF),
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFF00A8FF).withOpacity(0.3),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: IconButton(
-                            onPressed: _openQRProfile,
-                            icon: const Icon(
-                              Icons.qr_code_2,
-                              color: Colors.white,
-                              size: 24,
-                            ),
-                            tooltip: 'Share QR Code',
-                          ),
-                        ),
+                        // // QR Share button
+                        // Container(
+                        //   width: 60,
+                        //   height: 60,
+                        //   decoration: BoxDecoration(
+                        //     color: const Color(0xFF00A8FF),
+                        //     shape: BoxShape.circle,
+                        //     boxShadow: [
+                        //       BoxShadow(
+                        //         color: const Color(0xFF00A8FF).withOpacity(0.3),
+                        //         blurRadius: 10,
+                        //         offset: const Offset(0, 4),
+                        //       ),
+                        //     ],
+                        //   ),
+                        //   child: IconButton(
+                        //     onPressed: _openQRProfile,
+                        //     icon: const Icon(
+                        //       Icons.qr_code_2,
+                        //       color: Colors.white,
+                        //       size: 24,
+                        //     ),
+                        //     tooltip: 'Share QR Code',
+                        //   ),
+                        // ),
                       ],
                     ),
                   ],
@@ -441,10 +412,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       subtitle: const Text(
                         'Share your contact details',
-                        style: TextStyle(
-                          color: Colors.white60,
-                          fontSize: 14,
-                        ),
+                        style: TextStyle(color: Colors.white60, fontSize: 14),
                       ),
                       trailing: const Icon(
                         Icons.arrow_forward_ios,
@@ -486,10 +454,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       subtitle: const Text(
                         'App preferences',
-                        style: TextStyle(
-                          color: Colors.white60,
-                          fontSize: 14,
-                        ),
+                        style: TextStyle(color: Colors.white60, fontSize: 14),
                       ),
                       trailing: const Icon(
                         Icons.arrow_forward_ios,
@@ -577,10 +542,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       subtitle: const Text(
                         'Sign out of account',
-                        style: TextStyle(
-                          color: Colors.white60,
-                          fontSize: 14,
-                        ),
+                        style: TextStyle(color: Colors.white60, fontSize: 14),
                       ),
                       trailing: const Icon(
                         Icons.arrow_forward_ios,

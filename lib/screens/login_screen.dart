@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'fingerprint_authentication.dart';
 import 'profile_setup_screen.dart';
+import 'home_screen.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
 import '../services/database_service.dart';
 import '../services/user_session_service.dart';
@@ -45,15 +45,11 @@ class _LoginScreenState extends State<LoginScreen> {
       });
 
       if (existingUser != null) {
-        // Existing user - go directly to fingerprint authentication
-        Navigator.push(
+        // Existing user - save session and go to home
+        await _sessionService.saveUserSession(completePhoneNumber);
+        Navigator.pushReplacement(
           context,
-          MaterialPageRoute(
-            builder: (context) => FingerprintAuthScreen(
-              phoneNumber: completePhoneNumber,
-              isSetup: false, // Authentication mode for existing users
-            ),
-          ),
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
         );
       } else {
         // User not found
@@ -101,13 +97,11 @@ class _LoginScreenState extends State<LoginScreen> {
     final String? lastUser = await _sessionService.getLastAuthenticatedUser();
 
     if (lastUser != null) {
-      // Navigate to fingerprint authentication
-      Navigator.push(
+      // Navigate directly to home screen
+      await _sessionService.saveUserSession(lastUser);
+      Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-          builder: (context) =>
-              FingerprintAuthScreen(phoneNumber: lastUser, isSetup: false),
-        ),
+        MaterialPageRoute(builder: (context) => const HomeScreen()),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -130,7 +124,8 @@ class _LoginScreenState extends State<LoginScreen> {
           padding: const EdgeInsets.all(24.0),
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              minHeight: MediaQuery.of(context).size.height -
+              minHeight:
+                  MediaQuery.of(context).size.height -
                   MediaQuery.of(context).padding.top -
                   MediaQuery.of(context).padding.bottom -
                   48,
@@ -202,7 +197,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   flex: 3,
                   child: Container(
                     width: double.infinity,
-                    constraints: const BoxConstraints(maxHeight: double.infinity),
+                    constraints: const BoxConstraints(
+                      maxHeight: double.infinity,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF2A4A6B),
                       borderRadius: BorderRadius.circular(24),
@@ -264,10 +261,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                         ),
                                         elevation: 0,
                                       ),
-                                      icon: const Icon(
-                                        Icons.fingerprint,
-                                        size: 24,
-                                      ),
+                                      icon: const Icon(Icons.login, size: 24),
                                       label: const Text(
                                         'Quick Access',
                                         style: TextStyle(
