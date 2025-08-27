@@ -26,7 +26,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 3,
+      version: 4, // Increment version for new columns
       onCreate: _createTables,
       onUpgrade: _upgradeDatabase,
     );
@@ -77,6 +77,9 @@ class DatabaseService {
         lastMessageTime INTEGER,
         unreadCount INTEGER DEFAULT 0,
         isActive INTEGER DEFAULT 1,
+        serverIP TEXT,
+        serverPort INTEGER,
+        sessionId TEXT,
         FOREIGN KEY (userId) REFERENCES users (id)
       )
     ''');
@@ -104,18 +107,23 @@ class DatabaseService {
         userId INTEGER,
         notificationsEnabled INTEGER DEFAULT 1,
         darkModeEnabled INTEGER DEFAULT 1,
-        biometricEnabled INTEGER DEFAULT 0,
         FOREIGN KEY (userId) REFERENCES users (id)
       )
     ''');
   }
 
-  Future<void> _upgradeDatabase(Database db, int oldVersion, int newVersion) async {
+  Future<void> _upgradeDatabase(
+    Database db,
+    int oldVersion,
+    int newVersion,
+  ) async {
     if (oldVersion < 2) {
       // Add new columns to users table
       try {
         await db.execute('ALTER TABLE users ADD COLUMN socketId TEXT');
-        await db.execute('ALTER TABLE users ADD COLUMN isOnline INTEGER DEFAULT 0');
+        await db.execute(
+          'ALTER TABLE users ADD COLUMN isOnline INTEGER DEFAULT 0',
+        );
         await db.execute('ALTER TABLE users ADD COLUMN lastSeen INTEGER');
       } catch (e) {
         print('Error adding columns to users table (might already exist): $e');
@@ -146,10 +154,16 @@ class DatabaseService {
 
       // Create updated messages table with new columns if they don't exist
       try {
-        await db.execute('ALTER TABLE messages ADD COLUMN isDelivered INTEGER DEFAULT 0');
-        await db.execute('ALTER TABLE messages ADD COLUMN isSent INTEGER DEFAULT 1');
+        await db.execute(
+          'ALTER TABLE messages ADD COLUMN isDelivered INTEGER DEFAULT 0',
+        );
+        await db.execute(
+          'ALTER TABLE messages ADD COLUMN isSent INTEGER DEFAULT 1',
+        );
       } catch (e) {
-        print('Error adding columns to messages table (might already exist): $e');
+        print(
+          'Error adding columns to messages table (might already exist): $e',
+        );
       }
 
       // Create settings table if it doesn't exist
@@ -159,12 +173,27 @@ class DatabaseService {
           userId INTEGER,
           notificationsEnabled INTEGER DEFAULT 1,
           darkModeEnabled INTEGER DEFAULT 1,
-          biometricEnabled INTEGER DEFAULT 0,
           FOREIGN KEY (userId) REFERENCES users (id)
         )
       ''');
 
       print('Database upgraded from version $oldVersion to $newVersion');
+    }
+
+    if (oldVersion < 4) {
+      // Add server connection details to chat_sessions table
+      try {
+        await db.execute('ALTER TABLE chat_sessions ADD COLUMN serverIP TEXT');
+        await db.execute(
+          'ALTER TABLE chat_sessions ADD COLUMN serverPort INTEGER',
+        );
+        await db.execute('ALTER TABLE chat_sessions ADD COLUMN sessionId TEXT');
+        print('Added server connection columns to chat_sessions table');
+      } catch (e) {
+        print(
+          'Error adding server columns to chat_sessions (might already exist): $e',
+        );
+      }
     }
   }
 
@@ -271,7 +300,10 @@ class DatabaseService {
     );
   }
 
-  Future<int> updateChatSessionDeprecated(int sessionId, Map<String, dynamic> updates) async {
+  Future<int> updateChatSessionDeprecated(
+    int sessionId,
+    Map<String, dynamic> updates,
+  ) async {
     final db = await database;
     return await db.update(
       'chat_sessions',
@@ -298,8 +330,6 @@ class DatabaseService {
     required bool isFromMe,
     String messageType = 'text',
     DateTime? timestamp,
-    String? senderPhone,
-    String? receiverPhone,
   }) async {
     final db = await database;
     final messageId = await db.insert('messages', {
@@ -311,8 +341,6 @@ class DatabaseService {
       'isRead': isFromMe ? 1 : 0,
       'isDelivered': 0,
       'isSent': 1,
-      'senderPhone': senderPhone,
-      'receiverPhone': receiverPhone,
     });
 
     // Update chat session with last message
@@ -341,13 +369,17 @@ class DatabaseService {
     return await db.insert('messages', message.toMap());
   }
 
-  Future<List<Message>> getMessages(int sessionId, {int limit = 50, int offset = 0}) async {
+  Future<List<Message>> getMessages(
+    int sessionId, {
+    int limit = 50,
+    int offset = 0,
+  }) async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
       'messages',
       where: 'sessionId = ?',
       whereArgs: [sessionId],
-      orderBy: 'timestamp DESC',
+      orderBy: 'timestamp ASC',
       limit: limit,
       offset: offset,
     );
@@ -391,7 +423,10 @@ class DatabaseService {
     return maps.map((map) => ChatSession.fromMap(map)).toList();
   }
 
-  Future<ChatSession?> getChatSessionByUserAndPhone(int userId, String contactPhone) async {
+  Future<ChatSession?> getChatSessionByUserAndPhone(
+    int userId,
+    String contactPhone,
+  ) async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
       'chat_sessions',
@@ -405,7 +440,9 @@ class DatabaseService {
     return null;
   }
 
-  Future<ChatSession> createChatSessionFromModel(ChatSession chatSession) async {
+  Future<ChatSession> createChatSessionFromModel(
+    ChatSession chatSession,
+  ) async {
     final db = await database;
     final id = await db.insert('chat_sessions', chatSession.toMap());
 
@@ -449,7 +486,6 @@ class DatabaseService {
         'userId': userId,
         'notificationsEnabled': 1,
         'darkModeEnabled': 1,
-        'biometricEnabled': 0,
       };
       await db.insert('settings', defaultSettings);
       return defaultSettings;
@@ -519,7 +555,10 @@ class DatabaseService {
     );
   }
 
-  Future<Map<String, dynamic>?> getContactByPhone(int userId, String contactPhone) async {
+  Future<Map<String, dynamic>?> getContactByPhone(
+    int userId,
+    String contactPhone,
+  ) async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
       'contacts',
@@ -576,6 +615,9 @@ class DatabaseService {
     required String contactName,
     required String contactPhone,
     String? contactAvatar,
+    String? serverIP,
+    int? serverPort,
+    String? sessionId,
   }) async {
     final db = await database;
     return await db.insert('chat_sessions', {
@@ -587,6 +629,9 @@ class DatabaseService {
       'lastMessageTime': DateTime.now().millisecondsSinceEpoch,
       'unreadCount': 0,
       'isActive': 1,
+      'serverIP': serverIP,
+      'serverPort': serverPort,
+      'sessionId': sessionId,
     });
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/qr_websocket_service.dart';
 import '../services/user_session_service.dart';
 import '../models/message.dart';
+import 'home_screen.dart';
 import 'dart:async';
 
 class QRWebSocketChatScreen extends StatefulWidget {
@@ -57,7 +58,9 @@ class _QRWebSocketChatScreenState extends State<QRWebSocketChatScreen> {
     });
 
     // Listen for connection events
-    _connectionSubscription = _webSocketService.connectionStream.listen((event) {
+    _connectionSubscription = _webSocketService.connectionStream.listen((
+      event,
+    ) {
       switch (event['type']) {
         case 'disconnected':
           setState(() {
@@ -130,6 +133,17 @@ class _QRWebSocketChatScreenState extends State<QRWebSocketChatScreen> {
     });
   }
 
+  void _handleBackButton() {
+    // Disconnect WebSocket and navigate to HomeScreen (Chats tab)
+    _webSocketService.disconnect();
+
+    // Navigate to HomeScreen and remove all previous routes
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (context) => const HomeScreen()),
+      (route) => false,
+    );
+  }
+
   @override
   void dispose() {
     _messageSubscription?.cancel();
@@ -142,171 +156,184 @@ class _QRWebSocketChatScreenState extends State<QRWebSocketChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF1E3A5F),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF2A4A6B),
-        foregroundColor: Colors.white,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.remoteUserName,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            Row(
-              children: [
-                Icon(
-                  _isConnected ? Icons.wifi : Icons.wifi_off,
-                  size: 12,
-                  color: _isConnected ? Colors.green : Colors.red,
+    return WillPopScope(
+      onWillPop: () async {
+        _handleBackButton();
+        return false; // Prevent default back navigation
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFF1E3A5F),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF2A4A6B),
+          foregroundColor: Colors.white,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => _handleBackButton(),
+          ),
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.remoteUserName,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
                 ),
-                const SizedBox(width: 4),
-                Text(
-                  _isConnected ? 'WebSocket Connected' : 'Disconnected',
-                  style: TextStyle(
-                    fontSize: 11,
+              ),
+              Row(
+                children: [
+                  Icon(
+                    _isConnected ? Icons.wifi : Icons.wifi_off,
+                    size: 12,
                     color: _isConnected ? Colors.green : Colors.red,
                   ),
-                ),
-              ],
+                  const SizedBox(width: 4),
+                  Text(
+                    _isConnected ? 'Online' : 'Offline',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: _isConnected ? Colors.green : Colors.red,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.info_outline),
+              onPressed: _showConnectionInfo,
             ),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.info_outline),
-            onPressed: _showConnectionInfo,
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Connection status banner
-          if (!_isConnected)
+        body: Column(
+          children: [
+            // Connection status banner
+            if (!_isConnected)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                color: Colors.red.withValues(alpha: 0.2),
+                child: const Row(
+                  children: [
+                    Icon(Icons.warning, color: Colors.red, size: 16),
+                    SizedBox(width: 8),
+                    Text(
+                      'Connection lost. Messages may not be delivered.',
+                      style: TextStyle(color: Colors.red, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+
+            // Messages list
+            Expanded(
+              child: _messages.isEmpty
+                  ? const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.wifi, size: 64, color: Colors.white30),
+                          SizedBox(height: 16),
+                          Text(
+                            'WebSocket Chat Connected!',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Start messaging in real-time',
+                            style: TextStyle(
+                              color: Colors.white60,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _messages.length + (_remoteUserTyping ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        if (index == _messages.length && _remoteUserTyping) {
+                          return _buildTypingIndicator();
+                        }
+                        return _buildMessageBubble(_messages[index]);
+                      },
+                    ),
+            ),
+
+            // Message input
             Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              color: Colors.red.withValues(alpha: 0.2),
-              child: const Row(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF2A4A6B),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, -2),
+                  ),
+                ],
+              ),
+              child: Row(
                 children: [
-                  Icon(Icons.warning, color: Colors.red, size: 16),
-                  SizedBox(width: 8),
-                  Text(
-                    'Connection lost. Messages may not be delivered.',
-                    style: TextStyle(color: Colors.red, fontSize: 12),
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(25),
+                      ),
+                      child: TextField(
+                        controller: _messageController,
+                        style: const TextStyle(color: Colors.white),
+                        enabled: _isConnected,
+                        decoration: InputDecoration(
+                          hintText: _isConnected
+                              ? 'Type a message...'
+                              : 'Offline',
+                          hintStyle: const TextStyle(color: Colors.white54),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
+                        ),
+                        onChanged: (text) {
+                          if (text.isNotEmpty) {
+                            _startTyping();
+                          } else {
+                            _stopTyping();
+                          }
+                        },
+                        onSubmitted: (_) => _sendMessage(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: _isConnected
+                          ? const Color(0xFF00A8FF)
+                          : Colors.grey,
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.send, color: Colors.white),
+                      onPressed: _isConnected ? _sendMessage : null,
+                    ),
                   ),
                 ],
               ),
             ),
-
-          // Messages list
-          Expanded(
-            child: _messages.isEmpty
-                ? const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.wifi,
-                          size: 64,
-                          color: Colors.white30,
-                        ),
-                        SizedBox(height: 16),
-                        Text(
-                          'WebSocket Chat Connected!',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          'Start messaging in real-time',
-                          style: TextStyle(
-                            color: Colors.white60,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _messages.length + (_remoteUserTyping ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (index == _messages.length && _remoteUserTyping) {
-                        return _buildTypingIndicator();
-                      }
-                      return _buildMessageBubble(_messages[index]);
-                    },
-                  ),
-          ),
-
-          // Message input
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFF2A4A6B),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  blurRadius: 4,
-                  offset: const Offset(0, -2),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(25),
-                    ),
-                    child: TextField(
-                      controller: _messageController,
-                      style: const TextStyle(color: Colors.white),
-                      enabled: _isConnected,
-                      decoration: InputDecoration(
-                        hintText: _isConnected ? 'Type a message...' : 'Disconnected',
-                        hintStyle: const TextStyle(color: Colors.white54),
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 12,
-                        ),
-                      ),
-                      onChanged: (text) {
-                        if (text.isNotEmpty) {
-                          _startTyping();
-                        } else {
-                          _stopTyping();
-                        }
-                      },
-                      onSubmitted: (_) => _sendMessage(),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Container(
-                  decoration: BoxDecoration(
-                    color: _isConnected ? const Color(0xFF00A8FF) : Colors.grey,
-                    shape: BoxShape.circle,
-                  ),
-                  child: IconButton(
-                    icon: const Icon(Icons.send, color: Colors.white),
-                    onPressed: _isConnected ? _sendMessage : null,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+          ],
+        ),
+      ), // End of Scaffold
+    ); // End of WillPopScope
   }
 
   Widget _buildMessageBubble(Message message) {
@@ -315,7 +342,9 @@ class _QRWebSocketChatScreenState extends State<QRWebSocketChatScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
-        mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: isMe
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
         children: [
           if (!isMe) ...[
             CircleAvatar(
@@ -334,7 +363,9 @@ class _QRWebSocketChatScreenState extends State<QRWebSocketChatScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: isMe ? const Color(0xFF00A8FF) : Colors.white.withValues(alpha: 0.1),
+                color: isMe
+                    ? const Color(0xFF00A8FF)
+                    : Colors.white.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(18),
               ),
               child: Column(
@@ -351,10 +382,7 @@ class _QRWebSocketChatScreenState extends State<QRWebSocketChatScreen> {
                     ),
                   Text(
                     message.content,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                    ),
+                    style: const TextStyle(color: Colors.white, fontSize: 16),
                   ),
                   const SizedBox(height: 4),
                   Row(
@@ -369,11 +397,7 @@ class _QRWebSocketChatScreenState extends State<QRWebSocketChatScreen> {
                       ),
                       if (isMe) ...[
                         const SizedBox(width: 4),
-                        const Icon(
-                          Icons.wifi,
-                          size: 10,
-                          color: Colors.white70,
-                        ),
+                        const Icon(Icons.wifi, size: 10, color: Colors.white70),
                       ],
                     ],
                   ),
@@ -403,7 +427,9 @@ class _QRWebSocketChatScreenState extends State<QRWebSocketChatScreen> {
             radius: 16,
             backgroundColor: const Color(0xFF4CAF50),
             child: Text(
-              widget.remoteUserName.isNotEmpty ? widget.remoteUserName[0].toUpperCase() : '?',
+              widget.remoteUserName.isNotEmpty
+                  ? widget.remoteUserName[0].toUpperCase()
+                  : '?',
               style: const TextStyle(color: Colors.white, fontSize: 12),
             ),
           ),
@@ -451,7 +477,10 @@ class _QRWebSocketChatScreenState extends State<QRWebSocketChatScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF2A4A6B),
-        title: const Text('WebSocket Connection Info', style: TextStyle(color: Colors.white)),
+        title: const Text(
+          'WebSocket Connection Info',
+          style: TextStyle(color: Colors.white),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -460,7 +489,7 @@ class _QRWebSocketChatScreenState extends State<QRWebSocketChatScreen> {
             _buildInfoRow('Phone', widget.remoteUserPhone),
             _buildInfoRow('Session ID', widget.sessionId),
             _buildInfoRow('Server', widget.serverInfo),
-            _buildInfoRow('Status', _isConnected ? 'Connected' : 'Disconnected'),
+            _buildInfoRow('Status', _isConnected ? 'Online' : 'Offline'),
             const SizedBox(height: 16),
             const Text(
               'This is a real-time WebSocket chat session. Messages are sent instantly when both devices are connected.',
@@ -488,14 +517,14 @@ class _QRWebSocketChatScreenState extends State<QRWebSocketChatScreen> {
             width: 80,
             child: Text(
               '$label:',
-              style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
           Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(color: Colors.white),
-            ),
+            child: Text(value, style: const TextStyle(color: Colors.white)),
           ),
         ],
       ),

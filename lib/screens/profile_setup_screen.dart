@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'fingerprint_authentication.dart';
+import 'home_screen.dart';
 import '../services/database_service.dart';
+import '../services/user_session_service.dart';
 import '../models/user.dart';
 
 class ProfileSetupScreen extends StatefulWidget {
@@ -54,20 +55,19 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       // Save to database
       await _databaseService.insertUser(user);
 
+      // Save user session for automatic login
+      final userSessionService = UserSessionService();
+      await userSessionService.saveUserSession(user.phone);
+
       setState(() {
         _isLoading = false;
       });
 
-      // Navigate to fingerprint setup for new users
+      // Navigate directly to home screen
       if (mounted) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(
-            builder: (context) => FingerprintAuthScreen(
-              phoneNumber: widget.phoneNumber,
-              isSetup: true, // This is setup mode for new users
-            ),
-          ),
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
         );
       }
     } catch (e) {

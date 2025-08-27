@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'home_screen.dart';
 
 class LoginSuccessScreen extends StatefulWidget {
   const LoginSuccessScreen({super.key});
@@ -73,8 +74,10 @@ class _LoginSuccessScreenState extends State<LoginSuccessScreen>
 
     if (mounted) {
       // Navigate to main app screen (home/dashboard)
-      // Replace with your actual home screen
-      Navigator.pushReplacementNamed(context, '/home');
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const HomeScreen()),
+      );
 
       // For demo, show a snackbar
       ScaffoldMessenger.of(context).showSnackBar(

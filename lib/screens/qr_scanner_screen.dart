@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:convert';
-import '../services/database_service.dart';
+import 'simplified_websocket_chat_screen.dart';
+import '../models/user.dart';
 import '../services/user_session_service.dart';
-import '../services/qr_websocket_service.dart';
-import 'qr_websocket_chat_screen.dart';
+import '../services/database_service.dart';
 
 class QRScannerScreen extends StatefulWidget {
   const QRScannerScreen({super.key});
@@ -15,370 +15,196 @@ class QRScannerScreen extends StatefulWidget {
 }
 
 class _QRScannerScreenState extends State<QRScannerScreen> {
-  bool _torchOn = false;
-  final DatabaseService _databaseService = DatabaseService();
-  final UserSessionService _sessionService = UserSessionService();
-  final QRWebSocketService _webSocketService = QRWebSocketService();
-  MobileScannerController? cameraController;
+  MobileScannerController cameraController = MobileScannerController();
   bool _hasScanned = false;
-  bool _cameraInitialized = false;
-  String? _cameraError;
-  bool _isProcessing = false;
 
   @override
   void initState() {
     super.initState();
-    _initializeCamera();
-    _webSocketService.initialize();
+    _requestCameraPermission();
   }
 
-  Future<void> _initializeCamera() async {
-    try {
-      final status = await Permission.camera.request();
-      if (status.isDenied) {
-        setState(() {
-          _cameraError = 'Camera permission denied';
-        });
-        return;
-      }
-
-      cameraController = MobileScannerController(
-        facing: CameraFacing.back,
-        torchEnabled: false,
-        returnImage: false,
-      );
-
-      setState(() {
-        _cameraInitialized = true;
-        _cameraError = null;
-      });
-    } catch (e) {
-      setState(() {
-        _cameraError = 'Failed to initialize camera: $e';
-      });
+  Future<void> _requestCameraPermission() async {
+    final status = await Permission.camera.request();
+    if (status.isDenied) {
+      _showPermissionDialog();
     }
   }
 
-  Future<void> _processQRCode(String qrData) async {
-    if (_isProcessing || _hasScanned) return;
-
-    setState(() {
-      _isProcessing = true;
-      _hasScanned = true;
-    });
-
-    // Stop the camera immediately to prevent multiple scans
-    if (cameraController != null) {
-      await cameraController!.stop();
-    }
-
-    try {
-      final Map<String, dynamic> data = jsonDecode(qrData);
-
-      if (data['type'] == 'qr_websocket_connection') {
-        await _handleWebSocketConnection(data);
-      } else {
-        throw Exception('Invalid QR code type. Expected WebSocket connection.');
-      }
-    } catch (e) {
-      setState(() {
-        _isProcessing = false;
-        _hasScanned = false;
-      });
-
-      // Restart camera if there was an error
-      if (cameraController != null) {
-        await cameraController!.start();
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Invalid QR code: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _handleWebSocketConnection(Map<String, dynamic> qrData) async {
-    try {
-      final String? currentUserPhone = await _sessionService.getCurrentUser();
-      if (currentUserPhone == null) {
-        throw Exception('No user session found');
-      }
-
-      final currentUser = await _databaseService.getUserByPhone(currentUserPhone);
-      if (currentUser == null) {
-        throw Exception('Current user not found in database');
-      }
-
-      final String serverIP = qrData['ip'] ?? '';
-      final int serverPort = qrData['port'] ?? 0;
-      final String sessionId = qrData['sessionId'] ?? '';
-      final String remoteUserName = qrData['userName'] ?? 'Unknown User';
-      final String remoteUserPhone = qrData['userPhone'] ?? '';
-      final String remoteUserBio = qrData['userBio'] ?? '';
-
-      if (serverIP.isEmpty || serverPort == 0 || sessionId.isEmpty) {
-        throw Exception('Invalid QR code: Missing connection info');
-      }
-
-      if (remoteUserPhone == currentUserPhone) {
-        throw Exception('Cannot connect to yourself');
-      }
-
-      if (mounted) {
-        final bool? shouldConnect = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            backgroundColor: const Color(0xFF2A4A6B),
-            title: const Text(
-              'Connect via WebSocket',
-              style: TextStyle(color: Colors.white),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Connect to WebSocket server:',
-                  style: TextStyle(color: Colors.white70),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  remoteUserName,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  remoteUserPhone,
-                  style: const TextStyle(color: Colors.white70),
-                ),
-                if (remoteUserBio.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  Text(
-                    remoteUserBio,
-                    style: const TextStyle(color: Colors.white60, fontSize: 14),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.wifi, color: Colors.blue, size: 16),
-                          SizedBox(width: 8),
-                          Text(
-                            'WebSocket Connection',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Server: $serverIP:$serverPort',
-                        style: const TextStyle(color: Colors.white70, fontSize: 11, fontFamily: 'monospace'),
-                      ),
-                      Text(
-                        'Session: $sessionId',
-                        style: const TextStyle(color: Colors.white70, fontSize: 11, fontFamily: 'monospace'),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF00A8FF),
-                ),
-                child: const Text('Connect', style: TextStyle(color: Colors.white)),
-              ),
-            ],
-          ),
-        );
-
-        if (shouldConnect == true && mounted) {
-          // Show connecting dialog with more details
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (context) => AlertDialog(
-              backgroundColor: const Color(0xFF2A4A6B),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const CircularProgressIndicator(color: Colors.white),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Connecting to WebSocket server...',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Server: $serverIP:$serverPort',
-                    style: const TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'monospace'),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Make sure both devices are on the same WiFi network',
-                    style: TextStyle(color: Colors.orange, fontSize: 11),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-          );
-
-          // Connect to WebSocket server with detailed error handling
-          try {
-            final success = await _webSocketService.connectToServer(
-              serverIP: serverIP,
-              serverPort: serverPort,
-              sessionId: sessionId,
-              userName: currentUser.name,
-              userPhone: currentUser.phone,
-            );
-
-            if (mounted) {
-              Navigator.of(context).pop(); // Close connecting dialog
-            }
-
-            if (success && mounted) {
-              // Navigate to WebSocket chat screen
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => QRWebSocketChatScreen(
-                    remoteUserName: remoteUserName,
-                    remoteUserPhone: remoteUserPhone,
-                    sessionId: sessionId,
-                    serverInfo: '$serverIP:$serverPort',
-                  ),
-                ),
-              );
-            } else {
-              if (mounted) {
-                _showDetailedError(serverIP, serverPort);
-              }
-              setState(() {
-                _isProcessing = false;
-                _hasScanned = false;
-              });
-            }
-          } catch (e) {
-            if (mounted) {
-              Navigator.of(context).pop(); // Close connecting dialog
-              _showDetailedError(serverIP, serverPort, error: e.toString());
-            }
-            setState(() {
-              _isProcessing = false;
-              _hasScanned = false;
-            });
-          }
-        } else {
-          setState(() {
-            _isProcessing = false;
-            _hasScanned = false;
-          });
-        }
-      }
-    } catch (e) {
-      setState(() {
-        _isProcessing = false;
-        _hasScanned = false;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Connection failed: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  void _showDetailedError(String serverIP, int serverPort, {String? error}) {
+  void _showPermissionDialog() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF2A4A6B),
-        title: const Text(
-          'Connection Error',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (error != null) ...[
-              Text(
-                'Error: $error',
-                style: const TextStyle(color: Colors.red, fontSize: 14),
-              ),
-              const SizedBox(height: 8),
-            ],
-            const Text(
-              'Unable to connect to the WebSocket server.',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Server IP: $serverIP',
-              style: const TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'monospace'),
-            ),
-            Text(
-              'Server Port: $serverPort',
-              style: const TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'monospace'),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Troubleshooting Tips:',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              '• Ensure the server is running.',
-              style: TextStyle(color: Colors.white70, fontSize: 12),
-            ),
-            const Text(
-              '• Check your internet connection.',
-              style: TextStyle(color: Colors.white70, fontSize: 12),
-            ),
-            const Text(
-              '• Make sure both devices are on the same WiFi network.',
-              style: TextStyle(color: Colors.white70, fontSize: 12),
-            ),
-          ],
+        title: const Text('Camera Permission Required'),
+        content: const Text(
+          'This app needs camera permission to scan QR codes.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK', style: TextStyle(color: Colors.white70)),
+            onPressed: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pop();
+            },
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              openAppSettings();
+            },
+            child: const Text('Settings'),
           ),
         ],
       ),
     );
+  }
+
+  void _onQRViewCreated(BarcodeCapture capture) {
+    if (_hasScanned) return;
+
+    final List<Barcode> barcodes = capture.barcodes;
+    if (barcodes.isNotEmpty) {
+      final String? code = barcodes.first.rawValue;
+      if (code != null && code.isNotEmpty) {
+        _hasScanned = true;
+        cameraController.stop();
+        _processQRCode(code);
+      }
+    }
+  }
+
+  void _processQRCode(String qrData) {
+    try {
+      final Map<String, dynamic> data = jsonDecode(qrData);
+
+      if (data['type'] == 'chatlink_websocket') {
+        _connectToWebSocketChat(data);
+      } else {
+        _showErrorDialog(
+          'Invalid QR Code',
+          'This QR code is not supported for chat connection.',
+        );
+      }
+    } catch (e) {
+      _showErrorDialog(
+        'QR Code Error',
+        'Failed to read QR code data: ${e.toString()}',
+      );
+    }
+  }
+
+  void _connectToWebSocketChat(Map<String, dynamic> qrData) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Connect to Chat'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Host: ${qrData['hostName'] ?? 'Unknown'}'),
+            Text('Phone: ${qrData['hostPhone'] ?? 'Unknown'}'),
+            const SizedBox(height: 16),
+            const Text('Do you want to connect to this chat?'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _resetScanner();
+            },
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _startWebSocketConnection(qrData);
+            },
+            child: const Text('Connect'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _startWebSocketConnection(Map<String, dynamic> qrData) async {
+    try {
+      // Get current user data
+      final UserSessionService sessionService = UserSessionService();
+      final DatabaseService databaseService = DatabaseService();
+
+      final String? currentUserPhone = await sessionService.getCurrentUser();
+      if (currentUserPhone == null) {
+        _showErrorDialog('Error', 'No current user session found');
+        return;
+      }
+
+      final User? currentUser = await databaseService.getUserByPhone(
+        currentUserPhone,
+      );
+      if (currentUser == null) {
+        _showErrorDialog('Error', 'Current user data not found');
+        return;
+      }
+
+      // Parse and ensure proper types for server details
+      final String? serverIP = qrData['ip']?.toString();
+      final int? serverPort = qrData['port'] is int
+          ? qrData['port']
+          : int.tryParse(qrData['port']?.toString() ?? '');
+
+      print('🔍 QR Scanner Debug:');
+      print('  - Raw IP: ${qrData['ip']} (${qrData['ip'].runtimeType})');
+      print('  - Raw Port: ${qrData['port']} (${qrData['port'].runtimeType})');
+      print('  - Parsed IP: $serverIP');
+      print('  - Parsed Port: $serverPort');
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => SimplifiedWebSocketChatScreen(
+            currentUser: currentUser,
+            remoteUserName: qrData['hostName'] ?? 'Host',
+            remoteUserPhone: qrData['hostPhone'] ?? 'Unknown',
+            sessionId: qrData['sessionId'],
+            isHost: false,
+            serverIp: serverIP,
+            serverPort: serverPort,
+          ),
+        ),
+      );
+    } catch (e) {
+      _showErrorDialog(
+        'Connection Error',
+        'Failed to start connection: ${e.toString()}',
+      );
+    }
+  }
+
+  void _showErrorDialog(String title, String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _resetScanner();
+            },
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _resetScanner() {
+    setState(() {
+      _hasScanned = false;
+    });
+    cameraController.start();
   }
 
   @override
@@ -386,281 +212,110 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF1E3A5F),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E3A5F),
-        foregroundColor: Colors.white,
         title: const Text(
           'Scan QR Code',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-          ),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
         ),
+        backgroundColor: const Color(0xFF1E3A5F),
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          if (_cameraInitialized && cameraController != null)
-            IconButton(
-              onPressed: () {
-                cameraController!.toggleTorch();
-                setState(() {
-                  _torchOn = !_torchOn;
-                });
+          IconButton(
+            icon: ValueListenableBuilder(
+              valueListenable: cameraController.torchState,
+              builder: (context, state, child) {
+                switch (state) {
+                  case TorchState.off:
+                    return const Icon(Icons.flash_off, color: Colors.grey);
+                  case TorchState.on:
+                    return const Icon(Icons.flash_on, color: Colors.yellow);
+                }
               },
-              icon: Icon(
-                _torchOn ? Icons.flash_on : Icons.flash_off,
-                color: Colors.white,
-              ),
             ),
+            onPressed: () => cameraController.toggleTorch(),
+          ),
+          IconButton(
+            icon: ValueListenableBuilder(
+              valueListenable: cameraController.cameraFacingState,
+              builder: (context, state, child) {
+                switch (state) {
+                  case CameraFacing.front:
+                    return const Icon(Icons.camera_front);
+                  case CameraFacing.back:
+                    return const Icon(Icons.camera_rear);
+                }
+              },
+            ),
+            onPressed: () => cameraController.switchCamera(),
+          ),
         ],
       ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Camera section - responsive height
-            Flexible(
-              flex: 3,
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.6,
-                  minHeight: 300,
-                ),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.3),
-                      blurRadius: 15,
-                      offset: const Offset(0, 5),
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: _buildCameraView(),
+      body: Column(
+        children: [
+          Expanded(
+            flex: 4,
+            child: Container(
+              margin: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: const Color(0xFF00A8FF), width: 2),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: MobileScanner(
+                  controller: cameraController,
+                  onDetect: _onQRViewCreated,
                 ),
               ),
             ),
-
-            // Bottom section - adaptive height
-            Flexible(
-              flex: 1,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (_hasScanned)
-                        _buildScannedResult()
-                      else
-                        _buildInstructions(),
-                      const SizedBox(height: 16),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCameraView() {
-    if (_cameraError != null) {
-      return Container(
-        color: Colors.black,
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.camera_alt_outlined,
-                color: Colors.white,
-                size: 64,
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Camera Error',
-                style: TextStyle(color: Colors.white, fontSize: 18),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _cameraError!,
-                style: const TextStyle(color: Colors.white70),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _initializeCamera,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF00A8FF),
-                ),
-                child: const Text(
-                  'Retry',
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            ],
           ),
-        ),
-      );
-    }
-
-    if (!_cameraInitialized) {
-      return Container(
-        color: Colors.black,
-        child: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(color: Color(0xFF00A8FF)),
-              SizedBox(height: 16),
-              Text(
-                'Initializing Camera...',
-                style: TextStyle(color: Colors.white),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        MobileScanner(
-          controller: cameraController!,
-          onDetect: _onDetect,
-          errorBuilder: (context, error, child) => Container(
-            color: Colors.black,
-            child: Center(
+          Expanded(
+            flex: 2,
+            child: Container(
+              padding: const EdgeInsets.all(20),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.error, color: Colors.red, size: 64),
+                  const Icon(
+                    Icons.qr_code_scanner,
+                    size: 64,
+                    color: Color(0xFF00A8FF),
+                  ),
                   const SizedBox(height: 16),
-                  Text(
-                    'Camera Error: ${error.errorCode}',
-                    style: const TextStyle(color: Colors.white),
+                  const Text(
+                    'Scan QR Code to Connect',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w600,
+                    ),
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF00A8FF),
-                    ),
-                    child: const Text(
-                      'Go Back',
-                      style: TextStyle(color: Colors.white),
-                    ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Point your camera at a QR code to connect to a chat',
+                    style: TextStyle(color: Colors.white70, fontSize: 16),
+                    textAlign: TextAlign.center,
                   ),
+                  const SizedBox(height: 24),
+                  if (_hasScanned)
+                    const CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Color(0xFF00A8FF),
+                      ),
+                    ),
                 ],
               ),
             ),
           ),
-          placeholderBuilder: (context, child) => Container(
-            color: Colors.black,
-            child: const Center(
-              child: CircularProgressIndicator(color: Color(0xFF00A8FF)),
-            ),
-          ),
-        ),
-        // Custom overlay
-        Container(
-          width: 250,
-          height: 250,
-          decoration: BoxDecoration(
-            border: Border.all(color: const Color(0xFF00A8FF), width: 3),
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildScannedResult() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2A4A6B),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        children: [
-          const Icon(Icons.check_circle, color: Colors.green, size: 48),
-          const SizedBox(height: 12),
-          const Text(
-            'QR Code Detected!',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Processing connection...',
-            style: TextStyle(color: Colors.white70, fontSize: 14),
-            textAlign: TextAlign.center,
-          ),
         ],
       ),
     );
-  }
-
-  Widget _buildInstructions() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2A4A6B),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: const Column(
-        children: [
-          Icon(Icons.qr_code_scanner, color: Color(0xFF00A8FF), size: 48),
-          SizedBox(height: 12),
-          Text(
-            'Point your camera at a QR code',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: 8),
-          Text(
-            'The QR code will be scanned automatically',
-            style: TextStyle(color: Colors.white70, fontSize: 14),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _onDetect(BarcodeCapture capture) {
-    final List<Barcode> barcodes = capture.barcodes;
-    for (final barcode in barcodes) {
-      if (barcode.rawValue != null && !_hasScanned && !_isProcessing) {
-        setState(() {
-          _hasScanned = true;
-        });
-        _processQRCode(barcode.rawValue!);
-        break;
-      }
-    }
   }
 
   @override
   void dispose() {
-    if (cameraController != null) {
-      cameraController!.dispose();
-    }
+    cameraController.dispose();
     super.dispose();
   }
 }
