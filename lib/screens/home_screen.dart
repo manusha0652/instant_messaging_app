@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'tabs/chats_tab.dart';
 import 'tabs/profile_screen.dart';
 import 'qr_scanner_screen.dart';
-import 'device_to_device_connection_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -14,7 +13,11 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
 
-  final List<Widget> _screens = [const ChatsTab(), const ProfileScreen()];
+  final List<Widget> _screens = [
+    const ChatsTab(),
+    const QRScannerScreen(),
+    const ProfileScreen(),
+  ];
 
   void _onItemTapped(int index) {
     setState(() {
@@ -27,21 +30,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF1E3A5F),
       body: _screens[_selectedIndex],
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const DeviceToDeviceConnectionScreen(),
-            ),
-          );
-        },
-        backgroundColor: const Color(0xFF00A8FF),
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.devices),
-        label: const Text('Test Device Chat'),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerTop,
       bottomNavigationBar: Container(
         margin: const EdgeInsets.only(bottom: 40),
         height: 80,
@@ -68,12 +56,17 @@ class _HomeScreenState extends State<HomeScreen> {
               label: 'Chats',
               index: 0,
             ),
-            _buildQRNavItem(), // Special QR button
+            _buildNavItem(
+              icon: Icons.qr_code_scanner,
+              activeIcon: Icons.qr_code_scanner,
+              label: 'QR Scanner',
+              index: 1,
+            ),
             _buildNavItem(
               icon: Icons.person_outline,
               activeIcon: Icons.person,
               label: 'Profile',
-              index: 1,
+              index: 2,
             ),
           ],
         ),
@@ -110,40 +103,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildQRNavItem() {
-    return GestureDetector(
-      onTap: () {
-        // Navigate to QR Scanner Screen
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const QRScannerScreen(),
-          ),
-        );
-      },
-      child: Container(
-        width: 60,
-        height: 60,
-        decoration: BoxDecoration(
-          color: const Color(0xFF00A8FF),
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF00A8FF).withOpacity(0.3),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: const Icon(
-          Icons.qr_code_scanner,
-          color: Colors.white,
-          size: 30,
         ),
       ),
     );

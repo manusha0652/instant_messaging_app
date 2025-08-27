@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
-import 'fingerprint_authentication.dart';
+import 'home_screen.dart';
 import '../services/database_service.dart';
+import '../services/user_session_service.dart';
 import '../models/user.dart';
 
 class FirstTimeSetupScreen extends StatefulWidget {
@@ -15,6 +16,7 @@ class _FirstTimeSetupScreenState extends State<FirstTimeSetupScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _bioController = TextEditingController();
   final DatabaseService _databaseService = DatabaseService();
+  final UserSessionService _sessionService = UserSessionService();
   bool _isLoading = false;
   String _phoneNumber = '';
 
@@ -79,20 +81,18 @@ class _FirstTimeSetupScreenState extends State<FirstTimeSetupScreen> {
       // Save to database
       await _databaseService.insertUser(user);
 
+      // Save user session
+      await _sessionService.saveUserSession(_phoneNumber);
+
       setState(() {
         _isLoading = false;
       });
 
-      // Navigate to fingerprint setup for new users
+      // Navigate directly to home screen
       if (mounted) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(
-            builder: (context) => FingerprintAuthScreen(
-              phoneNumber: _phoneNumber,
-              isSetup: true, // This is setup mode for new users
-            ),
-          ),
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
         );
       }
     } catch (e) {
